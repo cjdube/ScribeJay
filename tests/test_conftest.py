@@ -206,3 +206,59 @@ def test_real_email_send_is_blocked():
 
     with pytest.raises(RuntimeError, match="Gmail"):
         email.send_email(subject="probe", body="probe")
+
+
+# --------------------------------------------------------------------------- #
+# Settings — the file and the Keychain the whole suite resolves through
+# --------------------------------------------------------------------------- #
+
+def test_the_settings_file_is_redirected_away_from_the_users_own():
+    from scribejay.core import config
+
+    assert config.config_dir() != Path.home() / ".scribejay", \
+        "the suite is reading and writing the user's real settings file"
+
+
+def test_the_env_file_is_redirected_and_does_not_exist():
+    # config/.env is the TOP resolution layer, so an un-redirected one silently
+    # decides every setting the suite sees — a fresh clone and a configured
+    # machine would then disagree about what a green suite proves.
+    from scribejay.core import config
+
+    resolved = config.env_path()
+    real = Path(config.__file__).resolve().parent.parent.parent / "config" / ".env"
+    assert resolved != real, "the suite is reading the developer's real config/.env"
+    assert not resolved.exists(), \
+        f"the redirected .env at {resolved} exists — tests must resolve off defaults"
+
+
+def test_a_real_setting_resolves_to_its_schema_default():
+    # The end-to-end proof of the two redirects above: with both in effect, a
+    # setting the developer has customised must come back as the shipped
+    # default, not as their value.
+    from scribejay.core import config, schema
+
+    assert config.getenv("OLLAMA_MODEL") == schema.default_for("OLLAMA_MODEL")
+
+
+def test_keychain_writes_raise_rather_than_degrading():
+    # core/secrets.py catches OSError/SubprocessError to degrade on a missing
+    # `security` binary, so a guard raising an ordinary Exception would be
+    # swallowed by the code it guards and the test would pass having proved
+    # nothing — while the developer's real login Keychain got a new item.
+    from scribejay.core import secrets
+
+    with pytest.raises(BaseException) as excinfo:
+        secrets.set("SCRIBEJAY_CONFTEST_PROBE", "probe")
+    assert not isinstance(excinfo.value, Exception), \
+        "the Keychain guard is a plain Exception — core/secrets.py will swallow it"
+
+
+def test_keychain_reads_still_degrade_quietly():
+    # Reads must NOT raise: resolve_key() consults the Keychain on every
+    # credential miss, and that path is exercised all over the suite. A guard
+    # that raised here would turn a normal miss into a failure.
+    from scribejay.core import secrets
+
+    assert secrets.get("SCRIBEJAY_CONFTEST_PROBE") is None
+    assert secrets.is_set("SCRIBEJAY_CONFTEST_PROBE") is False

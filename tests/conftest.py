@@ -19,6 +19,11 @@ What ScribeJay DOES have, and must protect the same way:
 - `ai_chat_learnings` has its own dedup store (STATE_PATH) and reads real
   `~/.claude` / `~/.codex` / Gemini-drop-folder paths off disk.
 - ClickUp and Gemini are both live network egress the suite must never reach.
+- `core/config.py` reads the user's real ~/.scribejay/config.json AND their
+  real config/.env at import — and the .env is the top resolution layer, so
+  it silently decides every setting the suite sees. `core/secrets.py` reads
+  and writes their real login Keychain. All three are production state; all
+  three are redirected or stubbed below.
 - `daily_commits` reads the machine: `sources/git.py` walks PROJECTS_DIR
   (defaulting to the developer's real ~/Projects) and shells out to git for
   every checkout there — including `fetch_repos()`, which runs `git fetch
@@ -33,13 +38,32 @@ from pathlib import Path
 
 import pytest
 
-from scribejay.core import logs as _logs
-from scribejay.core import notify as _notify
-from scribejay.core.backends import gemini as _gemini_backend
-from scribejay.sinks import email as _email
-from scribejay.sources import clickup as _clickup
-from scribejay.sources import transcripts as _chat_transcripts
-from scribejay import ai_chat_learnings as _ai_chat_learnings
+# BEFORE any scribejay import: scribejay/core/config.py resolves its settings
+# path and loads the file at import time, so a redirect installed after the
+# import below would already have missed. Without this, every test in the
+# suite reads the developer's own ~/.scribejay/config.json — their real
+# timezone, model, and folder paths — and a fresh clone and a configured
+# machine would disagree about what the suite proves.
+_TEST_CONFIG_DIR = Path(tempfile.mkdtemp(prefix="scribejay-test-config-"))
+os.environ["SCRIBEJAY_CONFIG_DIR"] = str(_TEST_CONFIG_DIR)
+
+# Same reasoning for the legacy config/.env. It is folded into os.environ at
+# config import, and os.environ is the TOP resolution layer — so without this
+# every test resolves settings through whatever the developer happens to have
+# configured (their model tag, their calendar, their timezone), and a fresh
+# clone and a working machine disagree about what a green suite proves. Pointed
+# at a path inside the throwaway dir, which deliberately does not exist.
+os.environ["SCRIBEJAY_ENV_FILE"] = str(_TEST_CONFIG_DIR / "absent.env")
+
+from scribejay.core import config as _config  # noqa: E402
+from scribejay.core import logs as _logs  # noqa: E402
+from scribejay.core import secrets as _secrets  # noqa: E402
+from scribejay.core import notify as _notify  # noqa: E402
+from scribejay.core.backends import gemini as _gemini_backend  # noqa: E402
+from scribejay.sinks import email as _email  # noqa: E402
+from scribejay.sources import clickup as _clickup  # noqa: E402
+from scribejay.sources import transcripts as _chat_transcripts  # noqa: E402
+from scribejay import ai_chat_learnings as _ai_chat_learnings  # noqa: E402
 
 # Resolved from the source tree rather than from any redirect, so it still names
 # the real directory when a redirect is the thing that's broken.
@@ -187,3 +211,51 @@ def _block_gemini_client(monkeypatch):
             "real Gemini client blocked in tests — stub "
             "scribejay.core.backends.gemini._gemini_client")
     monkeypatch.setattr(_gemini_backend, "_gemini_client", _no_real_gemini)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings_file(tmp_path, monkeypatch):
+    """Per-test settings isolation, behind the import-time redirect above.
+
+    The redirect keeps the suite off the real file; this keeps tests off each
+    other's, so a test that writes settings (the migration's, the settings
+    screen's later) cannot leak into the next one. config.reload() is called
+    for both directions so the in-memory CONFIG matches the empty directory."""
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path / "settings"))
+    monkeypatch.setenv("SCRIBEJAY_ENV_FILE", str(tmp_path / "absent.env"))
+    _config.reload()
+    yield
+    _config.STARTUP_WARNINGS.clear()
+
+
+class _KeychainWrite(BaseException):
+    """Deliberately NOT an Exception: core/secrets.py catches OSError and
+    SubprocessError to degrade on a missing `security` binary, so an ordinary
+    error raised here would be swallowed by the code it is guarding and the
+    test would pass having proved nothing."""
+
+
+@pytest.fixture(autouse=True)
+def _block_keychain(monkeypatch):
+    """Stub the one subprocess choke point in core/secrets.py.
+
+    Reads answer "no such item" (exit 44) rather than raising, because
+    resolve_key() consults the Keychain on every credential miss and that
+    degrade path is exercised all over the suite — it must stay a plain None.
+    Writes raise: add/delete-generic-password would mutate the developer's own
+    login Keychain, which is production state in the most literal sense.
+    tests/test_secrets.py re-patches this per test to exercise the real code."""
+    class _NotFound:
+        returncode = 44
+        stdout = ""
+        stderr = ""
+
+    def _stub(args, stdin=None):
+        if args and args[0] != "find-generic-password":
+            raise _KeychainWrite(
+                f"a test tried to write the real Keychain ({args[0]}) — stub "
+                "scribejay.core.secrets._run in that test."
+            )
+        return _NotFound()
+
+    monkeypatch.setattr(_secrets, "_run", _stub)

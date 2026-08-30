@@ -6,15 +6,15 @@ always pushes its own alert immediately.
 """
 
 import logging
-import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from scribejay.core import config
 from scribejay.core.notify import notify
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
-LOGS_DIR = Path(os.getenv("SCRIBEJAY_LOGS_DIR") or _ROOT / "logs")
+LOGS_DIR = Path(config.getenv("SCRIBEJAY_LOGS_DIR")).expanduser()
 
 
 def setup_logger(task_name: str) -> logging.Logger:
@@ -36,6 +36,14 @@ def setup_logger(task_name: str) -> logging.Logger:
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(fmt)
     logger.addHandler(stream_handler)
+
+    # Settings problems are found at import, before any logger exists, so
+    # scribejay/core/config.py parks them here instead of logging into the
+    # void. Replayed once, into the first task logger built: a settings file
+    # that is being silently ignored has to reach the run log, which is where
+    # a dashboard and a human both look.
+    while config.STARTUP_WARNINGS:
+        logger.warning(f"config: {config.STARTUP_WARNINGS.pop(0)}")
 
     return logger
 

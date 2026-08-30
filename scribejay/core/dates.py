@@ -6,12 +6,13 @@ resolve_date() and local_timezone() live here in Python rather than being left
 to a prompt.
 """
 
-import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
+
+from scribejay.core import config
 
 
 def local_timezone() -> str:
@@ -21,7 +22,7 @@ def local_timezone() -> str:
     zoneinfo path via /etc/localtime rather than relying on tzinfo.__str__.
     Overridable with the TIMEZONE env var; falls back to 'UTC' if the path
     can't be resolved."""
-    override = os.getenv("TIMEZONE")
+    override = config.getenv("TIMEZONE")
     if override:
         return override
     try:

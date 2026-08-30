@@ -1,39 +1,51 @@
 """Shared boilerplate for the HTTP-backed source modules.
 
-Mirrors LocalLLMAgent's agent/tools/_http.py verbatim: locate config/.env and
-load it, resolve an API key from arg > .env > environment, funnel request
-exceptions into a uniform {"error": ...} shape, and a main() that prints the
-JSON result and exits non-zero on error.
+Grew out of LocalLLMAgent's agent/tools/_http.py: locate config/.env and load
+it, resolve an API key, funnel request exceptions into a uniform
+{"error": ...} shape, and a main() that prints the JSON result and exits
+non-zero on error.
+
+No longer a verbatim mirror: resolve_key() gained the macOS Keychain, which
+is where ScribeJay keeps credentials now that it has to be installable by
+someone who never edits a .env file.
 """
 
 import json
 import os
-from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
 
-# config/.env lives at the repo root, three levels up from scribejay/core/.
-ENV_PATH = Path(__file__).resolve().parent.parent.parent / "config" / ".env"
+from scribejay.core import config, secrets
 
 
 def load_env() -> None:
-    """Load config/.env so os.getenv() sees keys from the file and the env."""
-    load_dotenv(ENV_PATH)
+    """Load config/.env so os.getenv() sees keys from the file and the env.
+
+    scribejay/core/config.py already does this at import and owns where the
+    file lives; this stays as the name the source modules call, and defers to
+    that one resolver rather than keeping a second copy of the path."""
+    load_dotenv(config.env_path())
 
 
 def resolve_key(name: str, arg: str | None = None) -> str | None:
-    """Resolve a credential: an explicit arg wins, else config/.env / env var.
+    """Resolve a credential: explicit arg > environment > macOS Keychain.
 
-    load_env() folds .env into the process environment, so a single os.getenv()
-    covers both the file and a real environment variable.
+    load_env() folds config/.env into the process environment, so one
+    os.getenv() covers both a legacy .env entry and a real environment
+    variable. The Keychain sits underneath both, so an env var still wins for
+    a one-off debugging run, and the setup wizard's stored credential is what
+    every scheduled run actually uses.
+
+    The Keychain is only consulted when the earlier layers miss, so an
+    ordinary run costs at most one `security` call per credential.
     """
-    return arg or os.getenv(name)
+    return arg or os.getenv(name) or secrets.get(name)
 
 
 def missing_key_error(name: str) -> dict:
     """The uniform error dict returned when a required key can't be resolved."""
-    return {"error": f"{name} not set (checked arg, config/.env, env var)"}
+    return {"error": f"{name} not set (checked arg, config/.env, env var, Keychain)"}
 
 
 def http_error(exc: Exception, phase: str = "fetch") -> dict:

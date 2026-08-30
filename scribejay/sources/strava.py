@@ -18,7 +18,6 @@ Key resolution order: --arg > config/.env file > env var
 """
 
 import argparse
-import os
 import sys
 import urllib.parse
 from datetime import datetime, timedelta
@@ -156,8 +155,8 @@ def fetch_strava(
 
 def _authorize() -> int:
     """One-time flow: obtain a refresh token to paste into config/.env."""
-    client_id = os.getenv("STRAVA_CLIENT_ID")
-    client_secret = os.getenv("STRAVA_CLIENT_SECRET")
+    client_id = resolve_key("STRAVA_CLIENT_ID")
+    client_secret = resolve_key("STRAVA_CLIENT_SECRET")
     if not (client_id and client_secret):
         print(
             "Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in config/.env first "

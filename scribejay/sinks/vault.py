@@ -6,22 +6,17 @@ persist_or_email half of agent/activity_log.py — grouped together here because
 both are sink operations: where a finished draft ends up.
 """
 
-import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
+from scribejay.core import config
 from scribejay.core.logs import notify_failure
 from scribejay.sinks.email import send_email
-
-_ROOT = Path(__file__).resolve().parent.parent.parent
-load_dotenv(_ROOT / "config" / ".env")
 
 DEFAULT_LEARNINGS_DIR = str(Path.home() / "Vaults" / "llm-wiki-learnings" / "raw")
 
 
 def _learnings_dir() -> Path:
-    return Path(os.getenv("LEARNINGS_DIR", DEFAULT_LEARNINGS_DIR)).expanduser()
+    return Path(config.getenv("LEARNINGS_DIR", DEFAULT_LEARNINGS_DIR)).expanduser()
 
 
 def write_entry(content: str, prefix: str, day, directory: str | Path | None = None) -> dict:

@@ -46,21 +46,31 @@ git clone <this repo>
 cd ScribeJay
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp config/.env.example config/.env          # fill in your own values
-cp config/preferences.example.json config/preferences.json   # optional, for calendar categories
 ```
 
-Fill in `config/.env` — see the comments in `config/.env.example` for what
-each variable is and where to get it (Google OAuth credentials, an Ollama
-host, optionally a Strava/ClickUp/Gemini/ntfy key). Google Calendar and Gmail
-access need a one-time OAuth consent in a browser the first time any job that
-touches them runs; `GOOGLE_OAUTH_PORT` in `.env` controls the local callback
-port for that flow.
+Settings live in `~/.scribejay/config.json`; secrets live in the macOS
+Keychain, never in a file. Every setting is described once, in
+`scribejay/core/schema.py` — `config/.env.example` lists the same keys with
+notes on where to get each value (Google OAuth credentials, an Ollama host,
+optionally a Strava/ClickUp/Gemini/ntfy key). See
+[docs/configuration.md](docs/configuration.md) for the file, the layering, and
+the Keychain.
 
-`config/preferences.json` holds personal, non-secret settings — your name
-and your calendar category colors. See
+Google Calendar and Gmail access need a one-time OAuth consent in a browser the
+first time any job that touches them runs; `GOOGLE_OAUTH_PORT` controls the
+local callback port for that flow.
+
+Personal, non-secret settings — your name and your calendar category colors —
+are the `persona`, `calendar`, and `learnings` sections of the same file. See
 [docs/preferences.md](docs/preferences.md) for the schema; the committed
-`preferences.example.json` is a safe default if you skip this step.
+`config/preferences.example.json` is a safe default if you skip this step.
+
+**Upgrading an existing install** that still has a `config/.env`:
+
+```bash
+.venv/bin/python -m scribejay.migrate --dry-run   # show what would move
+.venv/bin/python -m scribejay.migrate
+```
 
 Run the test suite:
 
@@ -96,7 +106,10 @@ lands.
 
 - [docs/architecture.md](docs/architecture.md) — the pipeline shape, module
   layout, and the split's history
-- [docs/preferences.md](docs/preferences.md) — `config/preferences.json` schema
+- [docs/configuration.md](docs/configuration.md) — settings, the resolution
+  layers, and the Keychain
+- [docs/preferences.md](docs/preferences.md) — the `persona`, `calendar`, and
+  `learnings` sections
 - [docs/llm-backend.md](docs/llm-backend.md) — local vs. cloud model selection
 - [docs/model-constraints.md](docs/model-constraints.md) — writing prompts for
   a small local model

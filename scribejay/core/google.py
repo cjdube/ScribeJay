@@ -28,21 +28,20 @@ import threading
 from pathlib import Path
 
 import httplib2
-from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_httplib2 import AuthorizedHttp
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+from scribejay.core import config
+
 _ROOT = Path(__file__).resolve().parent.parent.parent
-_ENV_PATH = _ROOT / "config" / ".env"
-load_dotenv(_ENV_PATH)
 
 # Outbound timeout (seconds) for every Google API call. Without it the
 # client's default httplib2 transport has NO timeout, which could hang a
 # launchd run past its next scheduled fire.
-GOOGLE_HTTP_TIMEOUT_S = int(os.getenv("GOOGLE_HTTP_TIMEOUT_S", "30"))
+GOOGLE_HTTP_TIMEOUT_S = int(config.getenv("GOOGLE_HTTP_TIMEOUT_S"))
 
 # Narrower than Wren's: no pubsub (mail watcher) and no tasks (Google Tasks) —
 # neither is journaling. gmail.send backs the colorizer's failure email and
@@ -71,8 +70,8 @@ def get_credentials() -> Credentials:
         if _CACHED_CREDS and _CACHED_CREDS.valid:
             return _CACHED_CREDS
 
-        creds_path = _ROOT / os.getenv("GOOGLE_CREDENTIALS_PATH", "config/google_credentials.json")
-        token_path = _ROOT / os.getenv("GOOGLE_TOKEN_PATH", "config/google_token.json")
+        creds_path = _ROOT / config.getenv("GOOGLE_CREDENTIALS_PATH")
+        token_path = _ROOT / config.getenv("GOOGLE_TOKEN_PATH")
 
         # The OAuth client-secret file is placed by hand (downloaded from Google
         # Cloud Console) and defaults to a world-readable 0644 — unlike every
@@ -101,7 +100,7 @@ def get_credentials() -> Credentials:
                 # can't silently bind to whatever account the browser happens to
                 # be defaulted to — youtube.readonly only works on the account
                 # that owns the target channel.
-                port = int(os.getenv("GOOGLE_OAUTH_PORT", "0"))
+                port = int(config.getenv("GOOGLE_OAUTH_PORT"))
                 creds = flow.run_local_server(port=port, prompt="select_account")
             token_path.write_text(creds.to_json())
             # Contains a refresh token — keep it readable only by the owner.
@@ -127,7 +126,6 @@ def build_service(api: str, version: str):
             service = build(api, version, http=http)
             _SERVICES[key] = service
         return service
-
 
 if __name__ == "__main__":
     get_credentials()

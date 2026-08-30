@@ -16,12 +16,12 @@ Config (config/.env):
                since the self-hosted server runs auth-default-access: deny-all.
 """
 
-import os
 from urllib.parse import urlsplit
 
 import requests
 
-from scribejay.core.http import http_error, load_env
+from scribejay.core import config
+from scribejay.core.http import http_error, load_env, resolve_key
 
 # The title travels as an HTTP header and the message as the body; the body is
 # sent UTF-8 encoded, and the title goes through _header_safe() below.
@@ -75,13 +75,13 @@ def notify(
     `email_fallback` emails the message if the push fails, so an ntfy outage
     can't silently swallow an alert."""
     load_env()
-    url = os.getenv("NTFY_URL")
+    url = config.getenv("NTFY_URL")
     if not url:
         # Deliberately no fallback: an unset NTFY_URL means push is switched
         # off on purpose, not that delivery failed.
-        return {"error": "NTFY_URL not set in config/.env"}
+        return {"error": "NTFY_URL not set"}
 
-    token = os.getenv("NTFY_TOKEN")
+    token = resolve_key("NTFY_TOKEN")
     auth = {"Authorization": f"Bearer {token}"} if token else {}
     body = message[:_MAX_MESSAGE_CHARS]
 

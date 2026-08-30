@@ -15,8 +15,10 @@ The google.genai imports stay inside the functions so importing this module
 never pulls the cloud SDK on the common local-only path."""
 
 import logging
-import os
 from typing import Optional
+
+from scribejay.core import config
+from scribejay.core.http import resolve_key
 
 # Default cloud model when the Gemini backend is selected but no model is pinned.
 GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
@@ -49,7 +51,7 @@ def _gemini_client(timeout: float = None):
     from google import genai
     from google.genai import types
 
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    api_key = resolve_key("GEMINI_API_KEY") or resolve_key("GOOGLE_API_KEY")
     kwargs = {"api_key": api_key}
     if timeout is not None:
         kwargs["http_options"] = types.HttpOptions(timeout=int(timeout * 1000))  # ms
@@ -68,13 +70,13 @@ def _gemini_chat(
     path returns."""
     from google.genai import types
 
-    model = model or os.getenv("SCRIBEJAY_GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
-    max_out = int(os.getenv("SCRIBEJAY_GEMINI_MAX_OUTPUT_TOKENS", "8192"))
+    model = model or config.getenv("SCRIBEJAY_GEMINI_MODEL", GEMINI_DEFAULT_MODEL)
+    max_out = int(config.getenv("SCRIBEJAY_GEMINI_MAX_OUTPUT_TOKENS"))
     # Gemini models are *thinking* models, and thinking tokens count against
     # max_output_tokens. See LocalLLMAgent's agent/backends/gemini.py for the
-    # measured per-model quirks this budget guards against; config/.env should
-    # pin SCRIBEJAY_GEMINI_THINKING_BUDGET the same way (128 is portable).
-    thinking_budget = int(os.getenv("SCRIBEJAY_GEMINI_THINKING_BUDGET", "0"))
+    # measured per-model quirks this budget guards against; the setting should
+    # be pinned the same way here (128 is portable).
+    thinking_budget = int(config.getenv("SCRIBEJAY_GEMINI_THINKING_BUDGET"))
     _ = think  # not honoured here — see thinking_budget above.
     system, contents = _gemini_contents(messages)
 
@@ -84,13 +86,13 @@ def _gemini_chat(
     )
     if system:
         cfg_kwargs["system_instruction"] = system
-    config = types.GenerateContentConfig(**cfg_kwargs)
+    gen_config = types.GenerateContentConfig(**cfg_kwargs)
 
     client = _gemini_client(timeout=timeout)
     content_parts: list[str] = []
     prompt_tokens = output_tokens = thinking_tokens = None
     finish_reason = None
-    stream = client.models.generate_content_stream(model=model, contents=contents, config=config)
+    stream = client.models.generate_content_stream(model=model, contents=contents, config=gen_config)
     for chunk in stream:
         cand = (chunk.candidates or [None])[0]
         if cand and cand.content and cand.content.parts:

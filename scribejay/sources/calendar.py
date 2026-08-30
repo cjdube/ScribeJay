@@ -5,15 +5,8 @@ used to categorize the prior day's events (daily_chrome_learnings,
 calendar_colorizer).
 """
 
-import os
-from pathlib import Path
-
-from dotenv import load_dotenv
-
+from scribejay.core import config
 from scribejay.core.google import build_service
-
-_ROOT = Path(__file__).resolve().parent.parent.parent
-load_dotenv(_ROOT / "config" / ".env")
 
 
 def get_events_in_range(time_min: str, time_max: str) -> dict:
@@ -23,7 +16,7 @@ def get_events_in_range(time_min: str, time_max: str) -> dict:
     size of 250 is a silent ceiling. Deferred deliberately, not missed: the
     callers that matter are all narrow (the colorizer does yesterday, the
     learnings task a day)."""
-    calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+    calendar_id = config.getenv("GOOGLE_CALENDAR_ID")
 
     try:
         service = build_service("calendar", "v3")

@@ -6,18 +6,11 @@ function of its own — this module imports the real thing directly (Trap 3 in
 docs/reviews/scribejay-split-plan.md).
 """
 
-import os
 from datetime import datetime
-from pathlib import Path
-
-from dotenv import load_dotenv
 
 from scribejay.core import config
 from scribejay.core.dates import local_timezone
 from scribejay.core.google import build_service
-
-_ROOT = Path(__file__).resolve().parent.parent.parent
-load_dotenv(_ROOT / "config" / ".env")
 
 # source_id prefix for the events scribejay/claude_time_blocks.py logs. It lives
 # here, next to log_calendar_event (which owns source_id), so the writer and
@@ -59,7 +52,7 @@ def log_calendar_event(
     color_id: str = None,
     source_id: str = None,
 ) -> dict:
-    calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+    calendar_id = config.getenv("GOOGLE_CALENDAR_ID")
     tz = local_timezone()
 
     try:
@@ -110,7 +103,7 @@ def log_calendar_event(
 def set_event_color(event_id: str, color_id: str) -> dict:
     """Patch just the colorId of an existing event — used by
     scribejay/calendar_colorizer.py to recolor yesterday's events by category."""
-    calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+    calendar_id = config.getenv("GOOGLE_CALENDAR_ID")
 
     try:
         service = build_service("calendar", "v3")

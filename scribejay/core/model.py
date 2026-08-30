@@ -197,18 +197,18 @@ def _ollama_chat(
     Streams so a stall can be diagnosed from what arrived (or didn't); there
     is no cancel path here (ScribeJay's tasks are unattended, nothing to
     cancel), so the stream just runs to completion or times out."""
-    model = model or os.getenv("OLLAMA_MODEL", "gemma4")
-    host = host or os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    model = model or config.getenv("OLLAMA_MODEL")
+    host = host or config.getenv("OLLAMA_HOST")
     if timeout is None:
-        timeout = float(os.getenv("OLLAMA_TIMEOUT", "300"))
-    num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
-    num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "3072"))
+        timeout = float(config.getenv("OLLAMA_TIMEOUT"))
+    num_ctx = int(config.getenv("OLLAMA_NUM_CTX"))
+    num_predict = int(config.getenv("OLLAMA_NUM_PREDICT"))
 
     payload = {
         "model": model,
         "messages": messages,
         "stream": True,
-        "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+        "keep_alive": config.getenv("OLLAMA_KEEP_ALIVE"),
         "options": {"num_ctx": num_ctx, "num_predict": num_predict},
     }
     if think is not None:
@@ -281,16 +281,16 @@ def warm_model(
     the caller still attempts the generation cold."""
     if _resolve_backend(backend) != "ollama":
         return True
-    model = model or os.getenv("OLLAMA_MODEL", "gemma4")
-    host = host or os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    model = model or config.getenv("OLLAMA_MODEL")
+    host = host or config.getenv("OLLAMA_HOST")
     if timeout is None:
-        timeout = float(os.getenv("OLLAMA_WARM_TIMEOUT", "600"))
-    num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+        timeout = float(config.getenv("OLLAMA_WARM_TIMEOUT"))
+    num_ctx = int(config.getenv("OLLAMA_NUM_CTX"))
     payload = {
         "model": model,
         "messages": [],
         "stream": False,
-        "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "30m"),
+        "keep_alive": config.getenv("OLLAMA_KEEP_ALIVE"),
         "options": {"num_ctx": num_ctx},
     }
     try:

@@ -8,22 +8,16 @@ parameter — ScribeJay has no reply-to-thread need, so the rest of that file
 """
 
 import base64
-import os
 from email.mime.text import MIMEText
-from pathlib import Path
 
-from dotenv import load_dotenv
-
+from scribejay.core import config
 from scribejay.core.google import build_service
-
-_ROOT = Path(__file__).resolve().parent.parent.parent
-load_dotenv(_ROOT / "config" / ".env")
 
 
 def send_email(subject: str, body: str, to: str = None, html: bool = False) -> dict:
-    to = to or os.getenv("BRIEF_TO_EMAIL")
+    to = to or config.getenv("BRIEF_TO_EMAIL")
     if not to:
-        return {"error": "BRIEF_TO_EMAIL not set in config/.env"}
+        return {"error": "BRIEF_TO_EMAIL not set"}
 
     message = MIMEText(body, "html" if html else "plain")
     message["to"] = to

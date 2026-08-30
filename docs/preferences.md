@@ -1,27 +1,34 @@
-# Personal preferences — `config/preferences.json`
+# Personal preferences — the `persona`, `calendar`, and `learnings` sections
 
 *Split from LocalLLMAgent's `docs/preferences.md` — that doc also covers keys
 ScribeJay's code never reads (`job_search`, `morning_brief`, `sports`,
 `location`, `projects.instruction_files`). This is ScribeJay's own half:
 just the keys `scribejay/core/config.py` actually consumes.*
 
+**These three sections now live in `~/.scribejay/config.json`** alongside every
+other setting — see [configuration.md](configuration.md) for the file, the
+layering, and the Keychain. `config/preferences.json` is still read as a
+fallback for installs that have not migrated yet; where both files carry a
+section, `~/.scribejay/config.json` wins. `python -m scribejay.migrate` folds
+the old file in.
+
 ScribeJay separates three kinds of configuration:
 
-- **Secrets** (API keys, tokens) — `config/.env`, gitignored, documented in
-  `config/.env.example`.
+- **Secrets** (API keys, tokens) — the macOS Keychain, never a file on disk.
 - **Personal preferences** (who ScribeJay serves and how events are
-  categorized) — `config/preferences.json`, **gitignored**. Not secret, just
-  personal. `config/preferences.example.json` is the committed template: copy
-  it, edit your copy, never edit Python.
+  categorized) — the sections below. Not secret, just personal.
+- **Everything else** — plain settings, described once in
+  `scribejay/core/schema.py`.
 
-The file is loaded once at import by `scribejay/core/config.py`, which falls
-back to `preferences.example.json` when you haven't made your own copy —
-so a fresh clone boots with a valid schema. A file that exists but is
-unparseable degrades to `{}` (nothing crashes), but every consumer below then
-runs with generic/empty values — several of them (`scribejay/sinks/calendar.py`'s
-`CATEGORY_COLORS`, `scribejay/calendar_colorizer.py`'s `VALID_COLOR_IDS`) compute
-a module-level constant from this file at import time, so a missing category
-breaks that constant for the whole process, not just one call. Keep it valid.
+The preferences sections are loaded once at import by
+`scribejay/core/config.py`, which falls back to `preferences.example.json` when
+you have not made your own copy — so a fresh clone boots with a valid schema.
+A file that exists but is unparseable degrades to `{}` (nothing crashes), but
+every consumer below then runs with generic/empty values — several of them
+(`scribejay/sinks/calendar.py`'s `CATEGORY_COLORS`,
+`scribejay/calendar_colorizer.py`'s `VALID_COLOR_IDS`) compute a module-level
+constant from this file at import time, so a missing category breaks that
+constant for the whole process, not just one call. Keep it valid.
 `tests/test_config.py` guards the schema of whichever file is live.
 
 ## Keys
