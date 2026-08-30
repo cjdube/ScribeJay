@@ -1,20 +1,16 @@
 """Single-turn model calls for ScribeJay's pipeline tasks.
 
 ScribeJay is gather -> one complete_text() call -> write. There is no tool
-registry and no advance() here — that whole side of LocalLLMAgent's
-agent/loop.py (tool-calling, confirmation gates, MAX_TOOL_ITERATIONS) has no
-counterpart in this repo and is not carried over.
+registry and no tool-calling loop here — no confirmation gates, no cancel
+path, no iteration cap — because there is no interactive turn to protect.
 
-**Identity, deliberately rebuilt rather than copied.** LocalLLMAgent's
-agent.loop.complete_text wraps every system prompt in with_identity(), which
-prepends Wren's persona, the user's personal identity file, and her memory
-store. None of that belongs in ScribeJay's prompts — a journaling task has no
-business reading Wren's memory. with_identity() here composes only
-scribejay/persona.md and the caller's system_prompt.
+**Identity is deliberately thin.** with_identity() composes exactly two
+things: scribejay/persona.md and the caller's system_prompt. A journaling task
+has no business reading a personal identity file or a memory store, so none is
+wired in.
 
-Backend selection is ScribeJay's own chain (SCRIBEJAY_<TASK>_BACKEND ->
-SCRIBEJAY_LLM_BACKEND -> ollama), independent of Wren's WREN_* variables —
-see backend()/log_backend() below.
+Backend selection is SCRIBEJAY_<TASK>_BACKEND -> SCRIBEJAY_LLM_BACKEND ->
+ollama — see backend()/log_backend() below.
 
 Usage:
     from scribejay.core.model import backend, complete_text, log_backend, warm_model
@@ -45,8 +41,9 @@ def backend(task_key: str) -> str | None:
     """SCRIBEJAY_<TASK_KEY>_BACKEND, else SCRIBEJAY_LLM_BACKEND, else None.
 
     `None` means "no opinion", which _llm_chat resolves to local Ollama — the
-    local-first default. Deliberately no fallback to WREN_<TASK_KEY>_BACKEND:
-    a silent fallback would hide a missed .env setup, where resolving to
+    local-first default. Deliberately no fallback to a legacy variable name
+    from the codebase this split out of: a silent fallback would hide a missed
+    setup, where resolving to
     ollama and SAYING SO in the run log (log_backend below) is the louder,
     correct failure."""
     return (
@@ -96,8 +93,8 @@ SCRIBEJAY_PERSONA = load_persona()
 
 def with_identity(system_prompt: str) -> str:
     """ScribeJay's persona plus the caller's system prompt. Nothing else —
-    see the module docstring for why this does not carry Wren's identity or
-    memory the way agent.loop.with_identity does."""
+    see the module docstring for why no identity file or memory store is
+    carried in."""
     parts = [p for p in (SCRIBEJAY_PERSONA, system_prompt) if p]
     return "\n\n---\n\n".join(parts)
 

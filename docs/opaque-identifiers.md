@@ -1,11 +1,9 @@
 # Never make the model copy an opaque identifier
 
-*Mirrored byte-for-byte from LocalLLMAgent's `docs/opaque-identifiers.md` — this file's twin. Applies equally to Wren and ScribeJay; both hand a small local model numbered items instead of raw ids.*
-
 A small local model cannot reliably transcribe a random string. Ask it to echo
-a 26-character Google event id or a 50-character lead id and it will spend its
-token budget copying characters, second-guess itself, and either return nothing
-at all or return the id subtly wrong. Both outcomes are silent.
+a 26-character Google event id and it will spend its token budget copying
+characters, second-guess itself, and either return nothing at all or return the
+id subtly wrong. Both outcomes are silent.
 
 ## The rule
 
@@ -24,7 +22,7 @@ Small integers are cheap to emit and trivial to validate. A number outside
 `1..len(batch)` is obviously bad and gets dropped; a mis-copied UUID looks
 exactly like a real one and matches nothing.
 
-## Two incidents
+## Two failure shapes
 
 ### The calendar colorizer — total failure
 
@@ -43,19 +41,15 @@ the event silently matched nothing and was never colored.
 Fixed by `_classify_input`, which numbers the events and shows the model nothing
 but `{"n": n, "summary": ...}`.
 
-### The opportunity digest — partial, silent failure
+### The worse version: a parser that degrades
 
-`tasks/opportunity_digest.py`, 2026-07-14. Lead ids of the shape
-`lever:<slug>:<uuid>` — up to ~50 characters — went out in the prompt and came
-back as the first field of each scored line. Forty of them per batch is a great
-deal of random string for a small model.
+The colorizer crashed, which is the lucky outcome. The same mistake in a task
+whose parser degrades to an empty result is silent: the run succeeds, the page
+is written, and the items that were meant to be scored simply are not.
 
-It burned its whole token budget on transcription and returned nothing. But
-unlike the colorizer, `_parse_scores` degrades to `{}` and the digest still goes
-out — so **11 leads were emailed unscored, and nothing said so.**
-
-Fixed by `_compact_for_scoring`, which numbers the batch, and `_parse_scores`,
-which is keyed by batch position and bounds-checks `n`.
+A batch scoring 8 of 10 items has been observed losing the other two with no
+trace at all. That is why the bounds-check below is paired with a count-gap
+WARNING — see [model-constraints.md](model-constraints.md).
 
 ## Why this is worse than a normal bug
 
@@ -95,16 +89,15 @@ if not 1 <= n <= len(batch):
 scores[batch[n - 1]["id"]] = (score, angle)
 ```
 
-Reference implementations: `scribejay/calendar_colorizer.py:_classify_input` /
-`_apply_classification`, and `tasks/opportunity_digest.py:_compact_for_scoring` /
-`_parse_scores`.
+Reference implementation: `scribejay/calendar_colorizer.py:_classify_input` /
+`_apply_classification`.
 
 ## What counts as an opaque identifier
 
 Anything the model has no semantic grip on:
 
-- Google event, task, and calendar ids
-- ATS lead ids (`lever:<slug>:<uuid>`)
+- Google event, message, and calendar ids
+- ClickUp task and list ids
 - UUIDs, hashes, and content-addressed keys
 - Long URLs used as keys
 
@@ -123,4 +116,4 @@ detectable. With a number it is. With a UUID it is not.
 ## Related
 
 - [model-constraints.md](model-constraints.md) — the rest of the small-model rules
-- [limits.md](limits.md) — where `num_predict` and the batch caps are set
+- [configuration.md](configuration.md) — where `OLLAMA_NUM_PREDICT` is set

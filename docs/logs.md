@@ -1,10 +1,6 @@
 # Logs
 
-*Split from LocalLLMAgent's `docs/logs.md` — that doc also covers Wren's `/logs`
-web viewer, which has no ScribeJay counterpart (no web app here at all). This
-file keeps only the part both agents share: the two-stream convention.*
-
-ScribeJay has no log viewer. To read a run's log, open the file directly:
+ScribeJay has no log viewer and no web app. To read a run's log, open the file directly:
 
 ```bash
 tail -f ~/.scribejay/logs/daily_chrome_learnings.log

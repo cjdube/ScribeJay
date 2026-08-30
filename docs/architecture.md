@@ -65,7 +65,7 @@ The same rule survived packaging: the log *directory* moved to
 same basenames for its "last completed" line.
 
 **The eight plists are generated, not committed.** `scribejay/cli/schedule.py`
-builds them from the table below plus `core/registry.py`, so only the tasks
+builds them from `core/registry.py` — the same table above, in code — so only the tasks
 whose sources the user wants get installed at all. `local.scribejay.selfheal`
 is the exception and stays a file — it runs under Apple-signed `/bin/bash` so
 it survives the broken interpreter it exists to repair.
@@ -90,8 +90,9 @@ it survives the broken interpreter it exists to repair.
   `vault` (write a day's entry to the Obsidian vault, or fall back to email
   if the write fails).
 - `scribejay/*.py` (top level) — the task entrypoints themselves, one per
-  launchd job, plus `activity.py` (the exclusion-filter and compaction
-  helpers shared by the daily learnings reviews).
+  launchd job, plus `activity.py` (the exclusion-filter and compaction helpers
+  shared by the daily learnings reviews), `correspondence.py` (the sent-mail
+  noise filter and page builder), `migrate.py` and `status.py`.
 
 Each source/sink module is a narrower slice of what its ancestor covered —
 read its own module docstring for exactly what was trimmed and why.
@@ -105,8 +106,8 @@ SCRIBEJAY_<TASK_KEY>_BACKEND  ->  SCRIBEJAY_LLM_BACKEND  ->  ollama
 ```
 
 Task keys match the `scribejay/` module names. There is deliberately **no**
-fallback to any legacy `WREN_*` variable — a silent fallback there would hide a
-missed setup. Every run logs which backend it resolved to and where that came
+fallback to any variable name from the codebase this split out of — a silent
+fallback there would hide a missed setup. Every run logs which backend it resolved to and where that came
 from, because the failure mode is silent: an unset variable is not an error,
 just a smaller model and a thinner draft.
 

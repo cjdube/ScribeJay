@@ -14,7 +14,7 @@ these consumer products, so we use what lands on disk):
   commentary/final answers; time tracking keeps every timestamp while exposing
   text only for those visible turns. Imported agent history, onboarding,
   guardians, subagents, and injected context are excluded.
-- A Gemini "drop folder" (WREN_GEMINI_CHATS_DIR): Gemini has no local footprint,
+- A Gemini "drop folder" (SCRIBEJAY_GEMINI_CHATS_DIR): Gemini has no local footprint,
   so the user drops an exported .md/.txt/.json file per conversation and we pick up
   anything not yet processed. Files are never modified or deleted.
 

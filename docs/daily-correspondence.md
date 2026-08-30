@@ -6,17 +6,17 @@ SENT **metadata** — headers, never bodies — groups it by conversation and wr
 
 **Why it exists.** The record already covers what was built
 ([daily-commits.md](daily-commits.md)), what was read
-([daily-learnings.md](daily-learnings.md)) and where the hours went (Claude Code
-time blocks). None of it says who the day was spent talking to. Sent mail is the
+([daily-learnings.md](daily-learnings.md)) and where the hours went
+([AI Session Time Blocks](ai-session-time-blocks.md)). None of it says who the
+day was spent talking to. Sent mail is the
 only source that does, and `gmail.readonly` is already consented, so it costs no
 new OAuth.
 
 ## What it reads
 
-`agent.tools.gmail_read.fetch_sent_metadata` — a library function, not a chat
-tool, the same shape `get_events_in_range` has for the calendar colorizer. Wren
-has no registered tool for this: reading the record of who was written to is
-journaling, and Wren reads the record rather than the mailbox.
+`scribejay.sources.gmail_sent.fetch_sent_metadata` — a read-only fetcher, the
+same shape `scribejay/sources/calendar.py` has for the calendar colorizer. It
+reads the SENT label and nothing else; the inbox is never touched.
 
 Each row is `{message_id, thread_id, to, cc, subject, date, is_reply}` and
 nothing else. Gmail is asked with `format="metadata"`, so a body is never
@@ -39,11 +39,11 @@ natural-language step.
 ## The noise filter
 
 Sent mail is not all correspondence. In a sample fortnight, 4 of 10 sent messages
-were Wren writing to the user.
+were software writing to the user rather than the user writing to anyone.
 
 | Rule | Catches |
 |---|---|
-| Every recipient is the user himself | Morning Brief, opportunity digests, log-inspector rollups |
+| Every recipient is the user himself | ScribeJay's own vault-write fallback and failure notices, and any other tool that mails him a report |
 | Subject is in `NOISE_SUBJECTS` | An `unsubscribe` click, which really is sent mail |
 
 The self-addressed rule is the principled one and comes first. `NOISE_SUBJECTS`
@@ -73,13 +73,13 @@ him twice. A real name beats a bare address whichever order the two arrive in.
 
 ## Where it writes, and why not the vault
 
-`CORRESPONDENCE_DIR`, default `~/Vaults/llm-wiki-learnings/correspondence`.
+`CORRESPONDENCE_DIR`, default `~/Documents/ScribeJay/correspondence`.
 
-**Not `LEARNINGS_DIR`.** That is the vault's `raw/`, ObsidianWikiAgent's ingest
-queue, and anything dropped there becomes an asserted wiki page — which would turn
-the people he emails and the companies they work for into wiki entities. A record
-of who he wrote to is a diary. `daily_synthesis` keeps its nudges out of the queue
-for the same reason ([daily-synthesis.md](daily-synthesis.md)).
+**Not `LEARNINGS_DIR`.** The journal folder is often an Obsidian vault feeding a
+note-taking pipeline, and anything dropped there can become an asserted note —
+which would turn the people he emails and the companies they work for into note
+entities. A record of who he wrote to is a diary, not a knowledge base. Keeping
+it in a sibling folder costs one setting and removes the whole question.
 
 ## Behavior
 
@@ -108,5 +108,6 @@ Re-running a day overwrites that day's file, so a backfill is safe to repeat.
 
 ## Related
 
-- [docs/scribejay.md](scribejay.md) — the agent this belongs to
+- [docs/architecture.md](architecture.md) — the pipeline shape this task follows
 - [docs/daily-commits.md](daily-commits.md) — the building half of the same daily record
+- [docs/timezones.md](timezones.md) — why the window is sent as epoch seconds

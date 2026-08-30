@@ -1,10 +1,9 @@
 """Shared Google OAuth helper for the calendar, gmail and youtube sources.
 
-Mirrors LocalLLMAgent's agent/tools/google_auth.py, with a narrower SCOPES
-list (see below) and its own token cache — a separate consent from Wren's, on
-purpose. A shared token file is a trap: if this repo ever ran its own consent
-flow against Wren's token it would overwrite Wren's broader grant and break
-its mail watcher.
+SCOPES below is deliberately narrow, and the token cache is ScribeJay's own.
+Sharing a token file with another tool is a trap: whichever side runs its
+consent flow last overwrites the other's grant, and the broader grant is the
+one that silently breaks.
 
 First run opens a browser for consent and caches a token at GOOGLE_TOKEN_PATH.
 Subsequent runs (including unattended launchd runs) reuse/refresh that token
@@ -15,12 +14,15 @@ Setup (one-time, manual):
   2. Enable "Google Calendar API", "Gmail API", and "YouTube Data API v3"
   3. OAuth consent screen -> External -> add your own email as a test user
   4. Credentials -> Create Credentials -> OAuth client ID -> Desktop app
-  5. Download the JSON, save it as config/google_credentials.json
-  6. Run: python -m scribejay.core.google   (opens browser once, caches token)
+  5. Download the JSON, save it at GOOGLE_CREDENTIALS_PATH
+     (default ~/.scribejay/google_credentials.json)
+  6. Run any Google-backed task by hand once (opens browser, caches token)
 
-Adding a new scope to SCOPES below requires deleting the cached
-config/google_token.json and re-running this module once — a cached token is
-locked to the scopes it was originally consented to.
+See docs/setup-google.md for the full walkthrough.
+
+Adding a new scope to SCOPES below requires deleting the cached token at
+GOOGLE_TOKEN_PATH and consenting once more — a cached token is locked to the
+scopes it was originally consented to.
 """
 
 import os
@@ -40,8 +42,8 @@ from scribejay.core import config
 # launchd run past its next scheduled fire.
 GOOGLE_HTTP_TIMEOUT_S = int(config.getenv("GOOGLE_HTTP_TIMEOUT_S"))
 
-# Narrower than Wren's: no pubsub (mail watcher) and no tasks (Google Tasks) —
-# neither is journaling. gmail.send backs the colorizer's failure email and
+# No pubsub (a mail watcher) and no tasks (Google Tasks) — neither is
+# journaling. gmail.send backs the colorizer's failure email and
 # the vault-write fallback; gmail.readonly backs daily_correspondence.
 SCOPES = [
     "https://www.googleapis.com/auth/calendar",

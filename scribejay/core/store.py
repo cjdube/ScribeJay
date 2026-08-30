@@ -1,8 +1,8 @@
 """Shared JSON-file store: resilient load, atomic write, cross-process lock.
 
-Mirrors LocalLLMAgent's agent/store.py verbatim — ScribeJay's tasks and Wren's
-both mutate config/*.json stores from separate processes, and this is the
-same fcntl.flock-based guard against a lost update between them.
+ScribeJay's tasks mutate config/*.json stores from separate launchd processes
+that can overlap, so this is an fcntl.flock-based guard against a lost update
+between them.
 
 locked() closes that gap with fcntl.flock on a sidecar <name>.lock file. A
 flock is held per open file description and every locked() call opens its own

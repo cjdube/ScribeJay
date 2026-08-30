@@ -1,9 +1,7 @@
 # Writing code against a small local model
 
-*Mirrored byte-for-byte from LocalLLMAgent's `docs/model-constraints.md` — this file's twin. Applies equally to Wren and ScribeJay; the same failure modes hit both.*
-
-Wren's on-device model is small. Four failure modes have each cost weeks of
-silent breakage, and each one produced a rule in
+ScribeJay's default backend is a small on-device model. Three failure modes
+have each cost weeks of silent breakage, and each one produced a rule in
 [AGENTS.md](../AGENTS.md)'s *Small-local-model constraints* section.
 
 AGENTS.md carries the rule and the measured result, because that's what's
@@ -11,7 +9,7 @@ needed while writing code. This file carries the evidence — the incidents, the
 replay counts, the reasoning — because that's what's needed when someone is
 about to decide the rule doesn't apply to their case. It usually does.
 
-The four share a shape worth naming up front: **the failure is invisible.** In
+The three share a shape worth naming up front: **the failure is invisible.** In
 every case the model returned something well-formed, the task exited 0, and no
 alert fired. Nothing looked wrong until someone went looking.
 
@@ -25,48 +23,41 @@ answer. A call that reasons too long doesn't return a truncated answer — it
 returns **empty content**, and the caller reports it as a parse failure. The
 symptom points at parsing; the cause is budget.
 
-**Incidents.** Twice: `calendar_colorizer` crashed on an empty response, and
-`opportunity_digest` silently emailed 11 unscored leads.
+**Incident.** `calendar_colorizer` crashed on an empty response. The same
+budget exhaustion in a task that degrades instead of raising is worse: it
+writes a short page and says nothing.
 
-**Measured**, on 40-lead scoring:
+**Measured**, on a 40-item batch classification:
 
 | | Runs producing output | Speed |
 |---|---|---|
 | thinking on | 0 of 3 | — |
 | thinking off | 3 of 3 | 5x faster |
 
-**Where thinking stays on:** only where the model must reason past what the
-prompt already contains — `evaluate_app`, `daily_synthesis`. Measure even
-there.
+**Where thinking stays on: nowhere, today.** Every model call in this repo
+passes `think=False`, because every one of them fills a template — a colorId, a
+60-character blurb, a two-section daily page. Before turning it on for a new
+call, measure it.
 
-**What "measure even there" turned up.** `daily_synthesis` lost its output to
-this in **3 of its first 29 runs** (2026-08-02, -08-12, -08-14) — each time
-discarding candidates that had already matched. It isn't prompt size: the
-smallest of the three carried 15 signals, the largest 46. It is
-nondeterministic — 2026-08-14 returned nothing, then returned nudges on the
-next call with an identical prompt — so the fix there is
-`MAX_SYNTHESIS_ATTEMPTS = 2`, not `think=False`, which would trade an occasional
-empty answer for a permanently worse one. The retry warns even when it
-succeeds; a silent self-healing retry would hide the failure rate, which is the
-thing the section below exists to prevent.
-
-**"Analysis" is not the test.** This is the part that gets rationalized away.
-`evaluate_against` writes a judgement, which sounds like reasoning — but it
-judges a target against standards that are *both already in the prompt*. That's
-comparison, not chain-of-thought. With thinking on, 1 run in 3 returned
-nothing; turning it off also made the output cite the standards more
-specifically. `research` fills a seven-label template from supplied snippets —
-same story, same fix.
+**"Analysis" is not the test.** This is the part that gets rationalized away. A
+prompt that asks the model to *judge* something sounds like reasoning — but if
+the thing being judged and the standard it is judged against are **both already
+in the prompt**, that is comparison, not chain-of-thought. Turning thinking off
+for that shape of call has also made the output cite the supplied material more
+specifically, not less.
 
 The test is not "is this analysis?" but **"must the model reason past what the
 prompt already contains?"**
 
-**Logging:** `agent/loop.py` warns when a generation hits the cap, but only if
-it has a logger. A call without `logger=` fails silently by construction.
+**Logging.** `scribejay/core/model.py:_ollama_chat` warns when a generation
+reaches `num_predict` and names this cause — but only if it has a logger. A
+call without `logger=` fails silently by construction.
 
-**On Gemini:** only the Ollama path acts on `think`. The equivalent knob is
-`WREN_GEMINI_THINKING_BUDGET` (already 0 by default, and some models reject 0 —
-see `agent/backends/gemini.py`).
+**On the cloud backends:** only the Ollama path acts on `think`. Gemini's
+equivalent knob is `SCRIBEJAY_GEMINI_THINKING_BUDGET` (already 0 by default,
+and some models reject 0 — see `scribejay/core/backends/gemini.py`). OpenRouter
+translates `think=False` into `reasoning: {enabled: false}`; see
+[llm-backend.md](llm-backend.md).
 
 ## Degrading on bad model output must be logged
 
@@ -74,123 +65,58 @@ see `agent/backends/gemini.py`).
 at WARNING with the counts and the raw length.
 
 "Degrade, don't crash" is right for a dead feed, whose absence is obvious in
-the resulting digest. Applied to model output it hides the bug instead, because
-a digest with 8 of 10 leads looks exactly like a digest with 10.
+the resulting page. Applied to model output it hides the bug instead, because
+a page with 8 of 10 bullets looks exactly like a page with 10.
 
 **Incidents**, all silent for weeks:
 
 - a mis-copied event id matched no event, so that event was never coloured
-- `_parse_scores` returned `{}` and the digest emailed 11 leads scored 0
-- a batch scoring 8 of 10 lost two leads with no trace
+- a batch scoring 8 of 10 items lost two of them with no trace
+- a parse that degraded to an empty result still wrote its page, unscored
 
 A scheduled task that silently produces *less* is worse than one that fails,
 because only the failure pushes an alert.
 
-## Catalogue tools must deny pretraining
+**Reference implementations.** `calendar_colorizer.py:111` warns per event it
+could not colour; `claude_time_blocks.py:187` warns when a block falls back to
+`working session`; `daily_commits.py:174` warns when a day that *had* commits
+produced a draft with no bullets. Each names the counts, so a thin page is
+visible in the log sweep rather than only in the vault.
 
-**Rule:** a tool that answers "what exists?" must say in its description that
-the answer is **not something the model knows**, that only what the tool
-returns exists, and what to say when it returns nothing.
+## Dates, arithmetic and structure stay in Python
 
-A catalogue question is the one shape where pretraining supplies a *plausible*
-answer, so the model skips the tool and invents one. General knowledge contains
-a perfectly good list of games; it just isn't ours.
+**Rule:** never ask the model for a date, a duration, a total, or a URL. Gather
+in Python, hand the model bounded text, and assemble the file in Python around
+what it returns.
 
-**Incident.** Asked "let's play a game" — a request to act, not a question
-about what exists — the `list_games` tool went uncalled in **2 of 12 replays**,
-and Wren offered Wordle, Sudoku and Chess with fabricated links.
+Weekday and day-window arithmetic is the classic case. It is exactly the shape
+a language model answers confidently and wrongly, and the wrong answer is a
+*valid* date — so nothing raises, nothing logs, and the only person who notices
+is someone who already knew the right answer.
 
-**Fix and result.** A description that only says *when* to call the tool isn't
-enough. Rewriting it to deny pretraining explicitly took the replay to **12 of
-12**. The wording is pinned by a test in `tests/test_games.py`.
+**Where this is enforced here:**
 
-**Verify with the vague phrasing.** "What games are there?" calls the tool
-regardless; "let's play a game" is what exposed the gap.
+| Concern | Owner |
+|---|---|
+| Local day windows over UTC sources | `scribejay/core/dates.py:local_timezone` — [timezones.md](timezones.md) |
+| Commit and line totals | `scribejay/journal.py:commit_totals_line` |
+| Time-block boundaries and rounding | `scribejay/claude_time_blocks.py` |
+| The video list and its links | `scribejay/journal.py`, via `core/urls.py:safe_url` |
+| Section headers, ordering, file names | every task's write step |
 
-Applies to any future registry-style tool — games, installed apps, connected
-devices.
+**Scheme-validate every URL** before rendering it into Markdown or HTML. A
+model handed a page title and a link will sometimes return a link that is
+neither. `safe_url` returns `""` for anything that is not `http`/`https`, and
+the caller renders the title unlinked instead — so a `javascript:` string can
+never reach a written file, and a bad URL costs its link rather than the page.
 
-## Never tell the model to describe an action it should perform
-
-**Rule:** any instruction about a confirmation-gated tool must say *call the
-tool in the same turn*, and that the pause is the app's job — not a reason to
-wait for a verbal go-ahead.
-
-**Incident.** `agent/wren_chat.md` used to say a write should be narrated
-because "the app itself will pause … so just narrate your intent." Asked to put
-a fetched Strava activity on the calendar, the model replied:
-
-> I'll add "Evening Volleyball" … from 6:38 PM to 9:13 PM
-
-…and emitted no `tool_call`. 2 of 3 replays; `logs/wren.log` 2026-08-01 06:06.
-
-`advance()` correctly ends the turn on a reply with no `tool_calls` — so
-nothing was written, nothing was gated, and nothing was logged. A text-only
-reply is shaped exactly like a legitimate answer. The user only noticed by
-asking twice.
-
-**Fix and result.** Rewording `wren_chat.md` to require the call in the same
-turn took the replay to **9 of 9**.
-
-**Backstop.** `chat/server.py:_warn_if_promised_without_acting` — a final reply
-that promises an action while the turn executed no tool now logs a WARNING
-instead of vanishing.
-
-## Weekday arithmetic is date math — resolve it in Python
-
-**Rule:** a tool that takes a day takes the user's *phrase* verbatim
-(`'tomorrow'`, `'next tuesday'`, `'last friday'`) and resolves it in
-`agent/dates.py`. Never ask the model which date a weekday falls on. A tool
-whose answer depends on the day should also return the day it used, so the
-reply quotes the tool rather than the model's memory.
-
-**Incident.** Asked on Friday 2026-08-14 what was on the calendar for "next
-Tuesday", the model looked up **08-19** — a Wednesday — found nothing, and
-answered:
-
-> You have nothing on your calendar for next Tuesday, August 19th.
-
-The real next Tuesday, the 18th, had an event on it. `logs/wren.log` 2026-08-14
-19:07.
-
-**Why it was wrong shaped like right.** Nothing failed. The tool ran, returned
-a valid empty list, and the prose agreed with the lookup — the model had simply
-aimed both at the same wrong day. There is no error to log and no count to
-compare, so none of the existing backstops could have caught it. Only someone
-who knew the event existed would notice.
-
-`resolve_date()` already owned `today`/`yesterday`/`MM-DD`/`YYYY-MM-DD` —
-weekdays were the one date shape never moved into Python. Both instructions
-pointed at the model asked for exactly the arithmetic it can't do:
-`DATE_ARG_GUIDANCE` said "pass just 'MM-DD'" (a weekday phrase can't be passed,
-so it had to convert), and the chat system prompt said to resolve "a relative
-day … against today's date". A test even pinned the gap:
-`resolve_date("next tuesday") == "next tuesday"`.
-
-**Fix.** `_resolve_relative_day()` in `agent/dates.py` handles `tomorrow` and
-weekday phrases, with `next`/`last` overriding the caller's `prefer` and a bare
-weekday following it (Chrome history looks back, the calendar forward).
-`DATE_ARG_GUIDANCE` was rewritten in the shape of `REMINDER_WHEN_GUIDANCE` —
-pass verbatim, "do NOT work out the date yourself" — and its wording is pinned
-by tests, because softening it back reintroduces the bug with every test green.
-`get_events_by_date` now returns `resolved_start`/`resolved_end` and a human
-`range`, and its schema tells the model to state that date.
-
-**Result.** 3 of 3 replays correct, each passing `'next Tuesday'` through
-verbatim; `tomorrow`, `last Friday` and a week-long range also correct.
-
-**Two things the replay caught that the unit tests could not.** Building "the
-week of next Monday", the model produced `'the following Sunday'` and `'the next
-Sunday'` — filler forms now stripped — and then paired next Monday with the
-*nearest* Sunday, the day before it. A backwards range returns nothing, which
-reads exactly like a free week, so `get_events_by_date` rejects it outright.
-Both are the same failure shape as the original: a plausible empty answer.
+The model's job is the sentence a human would have to write by hand. Everything
+a `for` loop can do, a `for` loop does.
 
 ## Related
 
 - [AGENTS.md](../AGENTS.md) — the rules themselves, in short form
-- [docs/llm-backend.md](llm-backend.md) — the backend seam and Gemini's knobs
-- [docs/tool-loading.md](tool-loading.md) — how a tool reaches the model at all
-- [docs/ollama-serving.md](ollama-serving.md) — failure modes of *serving* the
-  model rather than of its output: a shared single-slot Ollama, and a runner
-  that stops generating
+- [opaque-identifiers.md](opaque-identifiers.md) — the id-copying rule, and why
+  it compounds with the thinking budget
+- [timezones.md](timezones.md) — the day-window half of "Python owns dates"
+- [llm-backend.md](llm-backend.md) — the backend seam and each backend's knobs

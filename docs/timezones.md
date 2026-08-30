@@ -1,11 +1,9 @@
 # UTC sources, local day windows
 
-*Mirrored byte-for-byte from LocalLLMAgent's `docs/timezones.md` — this file's twin. Applies equally to Wren and ScribeJay; both read the same UTC-stamped sources and slice them into local day windows.*
-
-Every source Wren reads stamps its timestamps in UTC. Every question Wren
-answers is about a *local* calendar day — "what did I browse yesterday", "what
-did I Like on Monday". Converting between the two is the single bug this
-codebase has shipped most often.
+Every source ScribeJay reads stamps its timestamps in UTC. Every question
+ScribeJay answers is about a *local* calendar day — "what did I browse
+yesterday", "what did I Like on Monday". Converting between the two is the
+single bug this codebase has shipped most often.
 
 ## The rule
 
@@ -20,15 +18,15 @@ if published_at[:10] == day:
 
 # RIGHT — convert first
 from zoneinfo import ZoneInfo
-from agent.dates import local_timezone
+from scribejay.core.dates import local_timezone
 
 dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
 if dt.astimezone(ZoneInfo(local_timezone())).date().isoformat() == day:
 ```
 
-`agent/tools/youtube.py:_liked_local_date` is the reference implementation. It
-returns `""` for an unparseable stamp, which no window matches — degrade, don't
-crash.
+`scribejay/sources/youtube.py:_liked_local_date` is the reference
+implementation. It returns `""` for an unparseable stamp, which no window
+matches — degrade, don't crash.
 
 ## Why it survives review
 
@@ -43,16 +41,15 @@ So the sliced-string version:
 - passes the test suite, if the test happens to use a midday timestamp
 - then silently misfiles or drops **evening data only**, every day, forever
 
-Nothing raises. Nothing logs. The digest is just quietly short. That is what
+Nothing raises. Nothing logs. The day's page is just quietly short. That is what
 makes it worth a rule rather than a code comment.
 
-## The three incidents
+## The incidents
 
-| Where | Commit | What happened |
-|---|---|---|
-| Chrome history | `01c0718` | Day boundaries resolved in UTC, not local. Fixed by resolving the window through `agent.dates` and promoting `_local_timezone` into the shared `local_timezone()`. |
-| YouTube Likes | `5607532` | The API stamps `publishedAt` in UTC. A video Liked at 9:20pm EDT carries the *next* UTC date, so windowing on the raw stamp dropped every evening Like — and the next day's run attributed it to the wrong day. |
-| Weather forecast | — | Fixed defensively while building the multi-day forecast, before it could ship the bug. |
+| Where | What happened |
+|---|---|
+| Chrome history | Day boundaries resolved in UTC, not local. Fixed by resolving the window through the shared `local_timezone()` rather than a private copy. |
+| YouTube Likes | The API stamps `publishedAt` in UTC. A video Liked at 9:20pm EDT carries the *next* UTC date, so windowing on the raw stamp dropped every evening Like — and the next day's run attributed it to the wrong day. |
 
 The YouTube case is the clearest illustration: Liking something at 9:20pm on
 Jul 13 local stamps `2026-07-14T01:20:00Z`. The Jul 13 run dropped it. The Jul 14
@@ -60,18 +57,23 @@ run then claimed you Liked it on the 14th.
 
 ## `local_timezone()`
 
-`agent/dates.py:36` is the one home for the local zone. Several tools and tasks
-need the same answer, so none of them roll their own.
+`scribejay/core/dates.py` is the one home for the local zone. Several sources
+and tasks need the same answer, so none of them roll their own.
 
 - Reads the real zoneinfo path via `/etc/localtime` rather than `tzinfo.__str__`.
   Google Calendar rejects abbreviations like `EDT`, so the IANA name
   (`America/New_York`) is the only usable form.
-- Overridable with the `TIMEZONE` environment variable.
+- Overridable with the `TIMEZONE` setting.
 - Falls back to `"UTC"` if the path can't be resolved.
 
-Callers include `agent/tools/chrome_history.py`, `agent/tools/youtube.py`,
-`agent/tools/reminders.py`, `tasks/morning_brief.py`, and
-`scribejay/calendar_colorizer.py`.
+Callers include `scribejay/sources/chrome.py`, `scribejay/sources/youtube.py`,
+`scribejay/sources/gmail_sent.py`, `scribejay/calendar_colorizer.py` and
+`scribejay/claude_time_blocks.py`.
+
+Gmail is a variation on the same rule rather than an exception to it:
+`daily_correspondence` sends its window as **epoch seconds**, because Gmail's
+`after:`/`before:` take whole days in the *account's* timezone, which is not
+necessarily the machine's ([daily-correspondence.md](daily-correspondence.md)).
 
 ## Testing it
 
@@ -95,9 +97,8 @@ whose UTC date is the next day. A midday timestamp exercises nothing:
 _item("EVENING", "2026-07-14T01:20:00Z")  # 9:20pm Jul 13 local
 ```
 
-Suites already doing this: `tests/test_youtube.py`, `tests/test_chrome_history.py`,
-`tests/test_push_log.py`, `tests/test_calendar.py`, `tests/test_morning_brief.py`,
-`tests/test_daily_synthesis.py`, `tests/test_nudges.py`,
+Suites already doing this: `tests/test_youtube.py`, `tests/test_chrome.py`,
+`tests/test_dates.py`, `tests/test_clickup.py`, `tests/test_calendar_write.py`,
 `tests/test_claude_time_blocks.py`.
 
 ## Checklist for a new source
@@ -111,4 +112,4 @@ Suites already doing this: `tests/test_youtube.py`, `tests/test_chrome_history.p
 ## Related
 
 - [model-constraints.md](model-constraints.md) — why date math never goes to the model
-- [module-map.md](module-map.md) — where `agent/dates.py` sits
+- [architecture.md](architecture.md) — where `scribejay/core/dates.py` sits

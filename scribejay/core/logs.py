@@ -1,8 +1,7 @@
 """Shared helpers for ScribeJay's task runners (unattended entrypoints run by launchd).
 
-Mirrors LocalLLMAgent's tasks/_common.py, minus the startup_recovery detour —
-Wren's recovery coordinator does not exist in this repo, so a failed run
-always pushes its own alert immediately.
+There is no recovery coordinator in this repo, so a failed run always pushes
+its own alert immediately rather than deferring to one.
 """
 
 import logging

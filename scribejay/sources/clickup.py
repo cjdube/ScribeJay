@@ -3,7 +3,7 @@
 Mirrors LocalLLMAgent's agent/tools/clickup.py — just the slice
 `closed_tasks` needs (`_team_id`, `_spaces`, `_fetch_tasks`,
 `_ms_to_local_date`). Everything else in that module (the chat tools:
-list/read/add/move/comment, the digest, the tag watcher) is Wren-only and
+list/read/add/move/comment, digests, tag watchers) is not journaling and
 stays there.
 
 Key resolution order: config/.env file > CLICKUP_API_TOKEN env var
@@ -119,9 +119,10 @@ def closed_tasks(day: date, api_key: str = None) -> dict:
     """Every Task that reached a Done status on `day` (a LOCAL date), for
     scribejay/daily_commits.py.
 
-    This is the record of work that leaves no commit behind. The Wren Space
-    mostly duplicates git, but a contract advanced in another Space touches no
-    repository at all, so without this those days read as empty ones.
+    This is the record of work that leaves no commit behind. A Task in a code
+    Space mostly duplicates git, but a contract advanced in another Space
+    touches no repository at all, so without this those days read as empty
+    ones.
 
     **Closed on `day` means `date_closed` falls on `day`, never
     `date_updated`.** Editing a Task months after shipping it bumps

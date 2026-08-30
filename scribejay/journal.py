@@ -35,8 +35,8 @@ def closed_tasks_section(items: list) -> str:
     written for commits — "several commits are often one piece of work" — which
     says nothing true about a contract being signed or a post being researched.
 
-    The Space leads each line because it is the part git cannot say. A Wren Task
-    mostly restates a commit two sections above it; a Vibe Foundry one is the
+    The Space leads each line because it is the part git cannot say. A Task in a
+    code Space mostly restates a commit two sections above it; a Vibe Foundry one is the
     only record of that day's work anywhere.
 
     Titles are collapsed to one line — a Task name should not contain a newline,

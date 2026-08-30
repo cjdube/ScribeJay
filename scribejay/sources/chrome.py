@@ -5,10 +5,6 @@ while Chrome is running) and returns meaningful site visits as JSON.
 
 Day boundaries are interpreted in the system's local timezone (not UTC).
 
-Mirrors LocalLLMAgent's agent/tools/chrome_history.py — kept duplicated on
-purpose (see docs/reviews/scribejay-split-plan.md, Risk 4): Wren's own
-daily_synthesis reads Chrome history directly too.
-
 Usage:
     python -m scribejay.sources.chrome --days-ago 7
     python -m scribejay.sources.chrome --start 2026-06-22 --end 2026-06-28

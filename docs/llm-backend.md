@@ -1,9 +1,5 @@
 # LLM backend selection
 
-*Split from LocalLLMAgent's `docs/llm-backend.md` — that doc also covers
-Wren's chat/`bg_worker` backend chain (`WREN_*`), which has no counterpart
-here. This is ScribeJay's own half.*
-
 Every ScribeJay task's one model call goes through `scribejay/core/model.py`.
 The default is local Ollama (the local-first design); a cloud backend (Gemini
 or OpenRouter) is opt-in per task.
@@ -20,8 +16,10 @@ global one so you only send what you mean to.
 
 ## Selecting a backend
 
-Two environment variables in `config/.env`, resolved as
-**explicit per-task override → global default → `ollama`**:
+Two settings, resolved as
+**explicit per-task override → global default → `ollama`**. Set either in
+`scribejay settings`, or as an environment variable for one run
+([configuration.md](configuration.md)):
 
 - `SCRIBEJAY_LLM_BACKEND` — the global default for every task. Unset (or
   `ollama`) keeps everything local. Set to `gemini` or `openrouter` to route
@@ -41,8 +39,8 @@ SCRIBEJAY_LLM_BACKEND=ollama
 SCRIBEJAY_CALENDAR_COLORIZER_BACKEND=gemini
 ```
 
-There is deliberately **no** fallback to any Wren-style `WREN_*` variable — a
-silent fallback would hide a missed `.env` setup. Every run logs the backend
+There is deliberately **no** fallback to any variable name from the codebase
+this split out of — a silent fallback would hide a missed setup. Every run logs the backend
 it resolved to and where that came from, on its first line:
 
 ```
@@ -52,9 +50,9 @@ backend: ollama (default) (from unset)
 
 ## Applying a change
 
-`config/.env` is read fresh by each launchd job on every run, so a task needs
-no restart — the next run picks up the change. To exercise it immediately,
-run the task by hand:
+Settings are read fresh by each launchd job on every run, so a task needs no
+restart — the next run picks up the change. To exercise it immediately, run the
+task by hand:
 
 ```bash
 .venv/bin/python -m scribejay.daily_chrome_learnings
@@ -77,8 +75,8 @@ and one key, which is why it is the only "bring your own frontier model" path
 here rather than a separate backend per provider.
 
 - Key: `OPENROUTER_API_KEY`, from <https://openrouter.ai/keys>. It resolves
-  through the same layers as every other credential (env var -> `config/.env`
-  -> Keychain), so the settings screen can store it in the Keychain.
+  through the same layers as every other credential (env var -> Keychain), so
+  the settings screen can store it in the Keychain.
 - `OPENROUTER_MODEL` — a slug from <https://openrouter.ai/models>, e.g.
   `anthropic/claude-sonnet-5` (the default) or `openai/gpt-5`. A wrong slug is
   an HTTP error naming the slug, not a silent substitution.

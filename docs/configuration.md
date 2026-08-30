@@ -28,7 +28,7 @@ One JSON document, sections at the top level:
 ```json
 {
   "core":     { "timezone": "America/New_York" },
-  "output":   { "learnings_dir": "~/Vaults/llm-wiki-learnings" },
+  "output":   { "learnings_dir": "~/Documents/ScribeJay" },
   "model":    { "ollama_model": "gemma4", "per_task": { "daily_commits": "gemini" } },
   "google":   { "calendar_id": "primary" },
   "persona":  { "user_name": "Robin" }
@@ -60,9 +60,9 @@ someone had decided.
 
 ## Secrets live in the macOS Keychain
 
-Eight keys never touch the settings file:
+Seven keys never touch the settings file:
 
-`GEMINI_API_KEY` (and its `GOOGLE_API_KEY` alias), `OPENROUTER_API_KEY`,
+`GEMINI_API_KEY` (which also answers to `GOOGLE_API_KEY`), `OPENROUTER_API_KEY`,
 `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REFRESH_TOKEN`,
 `CLICKUP_API_TOKEN`, `NTFY_TOKEN`.
 
@@ -156,15 +156,19 @@ Several categories may share one `color_id`. Distinct names classify better
 than one grab-bag category with a long `hint`.
 
 **Roles** decouple what the code needs from what you call your categories, so
-renaming "Work" to "Day job" breaks nothing. Two are read:
+renaming "Work" to "Day job" breaks nothing. Three are read:
 
+- `work` — the colour AI Session Time Blocks are logged with
+  (`scribejay/claude_time_blocks.py`)
 - `fitness` — the colour Strava activities are logged with
   (`scribejay/strava_download.py`)
 - `fallback` — the colorId the colorizer uses when it cannot classify an event
   (`scribejay/calendar_colorizer.py`); expected on exactly one category
 
-`work`, `meetings` and `appointments` appear on the shipped categories but no
-code reads them. Retagging or removing them changes nothing.
+Each is looked up with `config.category_color_by_role(role, default)`, so
+removing a tagged category does not crash — the task falls back to a hard-coded
+colorId and keeps running. `meetings` and `appointments` appear on the shipped
+categories but no code reads them; retagging or removing those changes nothing.
 
 ### `learnings`
 

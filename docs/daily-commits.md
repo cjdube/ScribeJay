@@ -5,7 +5,7 @@ into `LEARNINGS_DIR` from two sources: yesterday's commits in the checkouts unde
 `PROJECTS_DIR`, grouped by the model into a short "what I built" page, and the
 ClickUp Tasks that reached a Done status that day, listed by Python.
 
-**Why it exists.** The rest of the record covered time and reading: Claude Code
+**Why it exists.** The rest of the record covered time and reading: AI session
 hours as calendar blocks, browsing and Likes as daily pages. Nothing said what
 was actually *made*. Git says it for code, needs no API and no token, and cannot
 be rate-limited or fall foul of a terms of service.
@@ -18,16 +18,16 @@ nothing had failed. See [The ClickUp half](#the-clickup-half) below.
 
 ## The ClickUp half
 
-`closed_tasks(day)` in `agent/tools/clickup.py`, rendered by
+`closed_tasks(day)` in `scribejay/sources/clickup.py`, rendered by
 `closed_tasks_section()` in `scribejay/journal.py`.
 
 | Choice | Why |
 |---|---|
 | **`date_closed`, never `date_updated`** | Editing a Task months after shipping it bumps `date_updated`, which would file old work under today. They disagree on 2 of this account's 26 closed Tasks — 8% of the record wrong, in the direction that invents work. |
 | **Rendered by Python, not the model** | The draft prompt is written for commits ("several commits are often one piece of work"), which says nothing true about a contract being signed. It is also what let this ship before the Foundry and Blog Spaces held a single closed Task: there is no wording to tune on data that does not exist yet. |
-| **The Space leads each line** | It is the part git cannot say. A Wren Task mostly restates a commit two sections above it; a Vibe Foundry one is the only record of that day's work anywhere. |
+| **The Space leads each line** | It is the part git cannot say. A Task in a code Space mostly restates a commit two sections above it; a Vibe Foundry one is the only record of that day's work anywhere. |
 | **`date_updated_gt` at the start of the local day** | Bounds the fetch against the `_MAX_PAGES` ceiling as the workspace grows. Safe rather than lucky: closing a Task *is* an update, so anything closed that day carries a `date_updated` at or after the day's start. |
-| **A day of pure non-code work never wakes the model** | Ollama has one slot ([ollama-serving.md](ollama-serving.md)); loading it to render a list nobody drafted would starve chat for nothing. |
+| **A day of pure non-code work never wakes the model** | Ollama serves one request at a time, and the daily jobs run minutes apart; loading a model to render a list nobody drafted would hold that slot for nothing. |
 | **A ClickUp outage costs the section, not the page** | The standing degrade-don\'t-crash rule. It is logged at WARNING, so a silently missing section is still visible in the 8am log sweep. |
 
 A day that *had* commits but whose draft came back empty writes **nothing at all**,
@@ -37,7 +37,7 @@ look at it twice.
 
 ## What it reads
 
-`scribejay/git_activity.py` shells out to `git log` in each checkout one level
+`scribejay/sources/git.py` shells out to `git log` in each checkout one level
 under `PROJECTS_DIR`. Per commit: subject, ISO timestamp, the paths changed, and
 the insertion/deletion counts.
 
@@ -48,14 +48,13 @@ Scope:
 | `HEAD` **and** `--remotes` | A commit pushed from another machine lands on `origin/<branch>` and on no local branch. Not `--all`, which would also fold in stale local branches and tags, whose rebase copies are commits nobody made that day. `git log` de-duplicates, so a commit on both refs is counted once. |
 | `--no-merges` | A merge commit's subject describes bookkeeping, not work. |
 | Author-filtered | A shared checkout's other contributors are not the user's day. |
-| One level under `PROJECTS_DIR` | The same shallow scan `tasks/project_scan.py` does. A nested monorepo checkout is not found. |
+| One level under `PROJECTS_DIR` | A deliberately shallow scan: `PROJECTS_DIR/<repo>/.git`. A checkout nested deeper, inside a monorepo, is not found. |
 
 ## The fetch in front of the read
 
 `fetch_repos()` runs `git fetch --all --quiet --no-tags` in every checkout before
 any day is scanned. This is the Git half's only network call; the ClickUp half
-separately calls the ClickUp API with `CLICKUP_API_TOKEN`. GitHub appears as an
-application on ScribeJay's `/map` because the remotes here are GitHub.
+separately calls the ClickUp API with `CLICKUP_API_TOKEN`.
 
 It exists because the read is otherwise blind to any machine but this one. Work
 committed and pushed elsewhere — a cloud session, a second Mac, an edit through
@@ -85,14 +84,14 @@ that reads slightly wrong.
 ## What the model is asked for
 
 Very little, on purpose. The commit subjects in these repos are written as
-sentences ("Watch mail because I sent it, not because a stranger typed [wren]"),
+sentences ("Watch mail because I sent it, not because a stranger typed a name"),
 so the draft is mostly a grouping job:
 
 - **Several commits are usually one piece of work.** Commits an hour apart over
   the same paths are one feature being finished, and get one bullet.
 - **The paths are the evidence the subject line doesn't carry.** `tests/` touched
   means it was tested; `docs/` or a README means it was documented; a new file
-  under `agent/tools/` is a capability rather than a fix.
+  under `scribejay/sources/` is a capability rather than a fix.
 - Two sections, `### What I Built` and `### Also`, with the same `**None:**`
   empty-section marker the other journaling tasks use.
 
@@ -104,7 +103,7 @@ wrong.
 
 ## Bounds
 
-Three caps, in `scribejay/git_activity.py`. Each one logs a WARNING whenever it
+Three caps, in `scribejay/sources/git.py`. Each one logs a WARNING whenever it
 actually drops something, because a silently shortened prompt produces a thinner
 page and nothing alerts on it:
 
@@ -158,6 +157,7 @@ so a backfill is safe to repeat.
 
 ## Related
 
-- [docs/scribejay.md](scribejay.md) — the agent this belongs to, and its model dial
+- [docs/architecture.md](architecture.md) — the pipeline shape this task follows
 - [docs/daily-learnings.md](daily-learnings.md) — the reading half of the same daily record
-- [docs/projects.md](projects.md) — the other consumer of `PROJECTS_DIR`
+- [docs/llm-backend.md](llm-backend.md) — the per-task model dial
+- [docs/configuration.md](configuration.md) — `PROJECTS_DIR` and `SCRIBEJAY_GIT_AUTHOR`

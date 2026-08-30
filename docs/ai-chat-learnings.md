@@ -6,8 +6,8 @@ vault — outcomes and takeaways, not the back-and-forth. It follows the same
 gather → compact → local model → persist shape as the other daily learnings
 tasks (`daily_chrome_learnings`, `daily_youtube_learnings`).
 
-Code: `scribejay/ai_chat_learnings.py` (the task), `scribejay/transcripts.py`
-(reading + compacting the three sources).
+Code: `scribejay/ai_chat_learnings.py` (the task),
+`scribejay/sources/transcripts.py` (reading + compacting the three sources).
 
 ## Why there's no "past chats" API
 
@@ -42,8 +42,8 @@ documented API, so its reader warns and skips when the expected shape drifts.
   `commentary`/`final_answer` `output_text` are retained. Developer instructions,
   injected environment/plugin/task context, reasoning, tools, and events are
   dropped. Codex CLI is not covered by this v1 reader.
-- **Gemini drop folder** (`WREN_GEMINI_CHATS_DIR`, default
-  `<vault>/gemini_inbox`) — Gemini has no local footprint, so drop an exported
+- **Gemini drop folder** (`SCRIBEJAY_GEMINI_CHATS_DIR`, default
+  `~/Documents/ScribeJay/gemini_inbox`) — Gemini has no local footprint, so drop an exported
   conversation (`.md`/`.txt`/`.json`, one file per chat) into this folder and it
   gets summarized once. `config/ai_chat_learnings_state.json` records processed
   filenames (by mtime) so re-runs never re-summarize the same file; files are
@@ -53,18 +53,18 @@ documented API, so its reader warns and skips when the expected shape drifts.
 ## Output
 
 One file per day, `AI-Chat-Learnings-<date>.md`, written to `LEARNINGS_DIR` (the
-vault's `raw/`), with one section per session:
+journal folder, default `~/Documents/ScribeJay`), with one section per session:
 
 ```
 ## AI Chat Learnings: July 12, 2026
 
-### Claude · LocalLLMAgent · i-d-like-to-explore-cozy-minsky · 4:34 AM
+### Claude · ScribeJay · fix-the-slug-lint · 4:34 AM
 **Accomplished**
 - ...
 **Learned**
 - ...
 
-### Codex · LocalLLMAgent · 11:12 AM
+### Codex · ScribeJay · 11:12 AM
 **Accomplished**
 - ...
 **Learned**
@@ -82,7 +82,7 @@ Each session is one bounded model call (`AI_CHAT_LEARNINGS_MAX_CHARS`, default
 handles reliably.
 
 A day with no chats, or where every summary came back "None", writes nothing
-(keeps the vault clean). If the vault write fails — e.g. `LEARNINGS_DIR` points
+(keeps the folder clean). If the write fails — e.g. `LEARNINGS_DIR` points
 somewhere that doesn't exist — the draft is emailed and a phone alert pushed, so
 an entry is never silently lost (same contract as the other learnings tasks).
 

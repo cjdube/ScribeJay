@@ -5,7 +5,7 @@ working hours and logs them to Google Calendar, so the calendar records how the 
 actually went without anyone remembering to block it out after the fact.
 
 Code: `scribejay/claude_time_blocks.py` (the compatibility-preserved task),
-`scribejay/transcripts.py` (`fetch_session_activity` and
+`scribejay/sources/transcripts.py` (`fetch_session_activity` and
 `fetch_codex_session_activity`, shared with `ai_chat_learnings`).
 
 It is a **companion** to [ai-chat-learnings](ai-chat-learnings.md), not part of it:
@@ -31,7 +31,7 @@ tool traffic, and injected context never enter the blurb prompt.
 Only Codex Desktop tasks whose first `session_meta` record says
 `thread_source == "user"` are accepted. Imported chats, onboarding, guardians,
 and subagents are rejected before their transcript bodies are read. That boundary
-matters because Codex can [import work from other agents](https://learn.chatgpt.com/docs/import),
+matters because Codex can [import work from other agents](https://learn.chatgpt.com/codex/import),
 which would otherwise duplicate activity already represented by its original source.
 Codex JSONL is a private observed format, not a stable public API; suspicious schema
 changes warn and degrade instead of failing the whole daily run.
@@ -72,11 +72,11 @@ inside the real stretch. The calendar reads `13:40–15:35`, not `13:41–15:31`
 ## What the entry looks like
 
 ```
-AI · LocalLLMAgent, ObsidianWikiAgent — implemented check_slug_typos linting rule
+AI · ScribeJay, NotesIndexer — implemented check_slug_typos linting rule
 8:05 – 9:25 AM
 
-  Claude · LocalLLMAgent · fix-the-slug-lint — 8:05 to 9:21 AM
-  Codex · ObsidianWikiAgent — 9:09 to 9:21 AM
+  Claude · ScribeJay · fix-the-slug-lint — 8:05 to 9:21 AM
+  Codex · NotesIndexer — 9:09 to 9:21 AM
 
   Logged by ScribeJay from local Claude Code and Codex Desktop session logs.
 ```
@@ -90,8 +90,9 @@ bounded call per block (2–6 a day, ~2k prompt tokens each), `think=False`, cap
 logs a WARNING** — a block silently titled that would otherwise read as an ordinary
 quiet day rather than a broken prompt.
 
-Events are colored with the Work category's color (by *role*, so renaming the
-category in `config/preferences.json` doesn't break this) and stamped with a
+Events are colored with the Work category's color (looked up by *role*, so
+renaming the category in your `calendar` settings section doesn't break this —
+see [configuration.md](configuration.md#calendar)) and stamped with a
 `source_id` of `claude-time:<date>:<HHMM>`, derived from the block's start. The
 prefix is a retained legacy identifier, not a claim that the event is Claude-only.
 
@@ -106,9 +107,9 @@ colored by a previous run or by hand. Four hours earlier these blocks arrived
 already colored, so it skips anything whose `source_id` starts with
 `claude-time:` — scoped to that prefix on purpose, since Strava's events also carry
 a `source_id` and should keep being classified. The prefix constant lives in
-`agent/tools/calendar.py` next to `log_calendar_event`, so neither task imports the
-other; `get_events_in_range` surfaces `source_id` on every event so the filter has
-something to match.
+`scribejay/sinks/calendar.py` next to `log_calendar_event`, so neither task imports
+the other; `scribejay/sources/calendar.py:get_events_in_range` surfaces `source_id`
+on every event so the filter has something to match.
 
 ## Running it by hand
 

@@ -2,7 +2,7 @@
 
 Mirrors LocalLLMAgent's agent/tools/gmail_read.py — just the sent-metadata
 slice (`fetch_sent_metadata` and its helpers). Everything else in that module
-(search, thread reads, the history watcher) is Wren-only and stays there.
+(search, thread reads, a history watcher) is not journaling and is not here.
 
 A **library function, not a chat tool** — no TOOL_SCHEMA. The only caller is
 scribejay/daily_correspondence.py.

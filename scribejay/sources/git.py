@@ -11,9 +11,8 @@ from the page and nothing says so — a quiet day and a lost day look identical.
 The fetch is best-effort: an unreachable remote logs a WARNING and the day is
 still written from what is already here.
 
-Gather-only, the way agent/tools/chrome_history.py is for browsing. No model call
-lives here (that is scribejay/daily_commits.py), and no TOOL_SCHEMA: Wren reads the
-record ScribeJay writes, not the repos themselves.
+Gather-only, the way scribejay/sources/chrome.py is for browsing. No model call
+lives here — that is scribejay/daily_commits.py.
 
 Scope:
 - `HEAD` plus the remote-tracking branches (`--remotes`) — where a commit fetched

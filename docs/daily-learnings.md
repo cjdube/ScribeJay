@@ -2,8 +2,10 @@
 
 Two tasks, one shape: read yesterday's activity from one channel, have the local
 model draft a short review of what it taught, and write one Markdown file per
-day into the Obsidian vault (`LEARNINGS_DIR`). They share the gather → persist →
-email helpers in `agent/activity_log.py`.
+day into the journal folder (`LEARNINGS_DIR`, default `~/Documents/ScribeJay`).
+They share the exclusion-filter and compaction helpers in
+`scribejay/activity.py` and the write-or-email step in
+`scribejay/sinks/vault.py`.
 
 A third task, [ai_chat_learnings](ai-chat-learnings.md), covers the same ground
 for AI-agent conversations and has its own doc because its sources are unusual.
@@ -15,7 +17,7 @@ for AI-agent conversations and has its own doc because its sources are unusual.
 
 ## Chrome
 
-Reads the prior day's history via `agent/tools/chrome_history.py` and asks the
+Reads the prior day's history via `scribejay/sources/chrome.py` and asks the
 model for a compact daily log in two sections:
 
 - **Tools & Tech Encountered**
@@ -36,22 +38,24 @@ history before blaming the prompt.
 
 ## YouTube
 
-Reads the prior day's Liked videos via `agent/tools/youtube.py` — title,
+Reads the prior day's Liked videos via `scribejay/sources/youtube.py` — title,
 channel and description, **not** transcripts. The model writes a short synthesis
 of what they teach; the list of the exact videos (verbatim titles, scheme-validated
 URLs) is appended **in Python**, not by the model, so the links are always real.
 Written as `Daily-YouTube-<date>.md`.
 
 Likes are timestamped UTC and the day window is local — `_liked_local_date`
-converts before comparing. See the day-boundary rule in [AGENTS.md](../AGENTS.md).
+converts before comparing. See [timezones.md](timezones.md).
 
 ## Shared behavior
 
 **A quiet day writes nothing.** No meaningful browsing, no Likes, or a draft
 that amounts to "None" produces no file. This is normal, not a failure.
 
-**A failed vault write emails the draft instead**, and pushes a phone alert —
-e.g. when `LEARNINGS_DIR` points somewhere that doesn't exist. The draft cost a
+**A failed write emails the draft instead**, and pushes a phone alert — e.g.
+when `LEARNINGS_DIR` points somewhere that doesn't exist. ScribeJay never
+creates that folder, on purpose: a missing folder means the path is wrong, and
+writing pages somewhere nobody reads is worse than failing. The draft cost a
 model call; it's never silently dropped.
 
 **The prompt is deliberately small and focused** so the on-device model produces
@@ -60,14 +64,15 @@ in [AGENTS.md](../AGENTS.md) and [docs/model-constraints.md](model-constraints.m
 
 ## Where the output goes
 
-`LEARNINGS_DIR` is the vault's `raw/` — a write-only drop that ObsidianWikiAgent
-ingests and summarizes into the `wiki/` concept pages Wren later reads via
-`agent/tools/wiki.py`. Anything written there becomes an asserted wiki page, so
-only reviews go here; questions and nudges go to `SYNTHESIS_DIR` instead (see
-[docs/daily-synthesis.md](daily-synthesis.md)).
+`LEARNINGS_DIR` — a plain folder or an Obsidian vault, whichever you set in
+`scribejay settings`. It is write-only: ScribeJay drops dated Markdown there and
+never reads it back. Sent mail is deliberately kept out of it and goes to
+`CORRESPONDENCE_DIR` instead, so a folder that feeds a note-taking pipeline does
+not turn the people you email into note entities
+([daily-correspondence.md](daily-correspondence.md)).
 
 ## Related
 
 - [docs/ai-chat-learnings.md](ai-chat-learnings.md) — the third learnings task
-- [docs/daily-synthesis.md](daily-synthesis.md) — consumes these files the next morning
+- [docs/daily-commits.md](daily-commits.md) — the building half of the same daily record
 - [docs/configuration.md](configuration.md#structured-settings--persona-calendar-learnings) — the exclusion keys

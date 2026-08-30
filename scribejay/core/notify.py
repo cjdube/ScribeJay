@@ -6,11 +6,10 @@ gets buried. Delivery is best-effort: notify() funnels every error into the
 uniform {"error": ...} shape rather than raising, so a push outage can never
 mask the task failure it's trying to report.
 
-Mirrors LocalLLMAgent's agent/tools/notify.py, minus the push_log bookkeeping
-(that store exists only to feed Wren's /pushes dashboard page — ScribeJay has
-no page).
+There is no push_log store here: that bookkeeping only ever existed to feed a
+dashboard page, and ScribeJay has no web app.
 
-Config (config/.env):
+Config (see docs/ntfy-setup.md):
     NTFY_URL   full topic URL, e.g. http://mac-mini.tailnet.ts.net:2586/scribejay-alerts
     NTFY_TOKEN publish token for that topic (Bearer). Optional but expected,
                since the self-hosted server runs auth-default-access: deny-all.
