@@ -57,7 +57,7 @@ include = ["scribejay*"]
 # persona.md is read at runtime by the tasks that write prose, so it has to
 # travel inside the wheel rather than sitting beside a checkout.
 [tool.setuptools.package-data]
-scribejay = ["persona.md", "preferences.example.json"]
+scribejay = ["persona.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

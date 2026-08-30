@@ -14,12 +14,9 @@ backend (Gemini) is selectable per-task via `SCRIBEJAY_LLM_BACKEND` /
 off-device ([docs/llm-backend.md](docs/llm-backend.md)). Run `pytest` before
 calling any change to existing code done.
 
-**Sibling repo.** ScribeJay split out of LocalLLMAgent (Wren, the interactive
-agent) on 2026-08-26 and became its own standalone repo shortly after — it
-runs with no Wren installed. The seam is one sentence — **ScribeJay writes the
-record, Wren reads it** — through the calendar and the Obsidian vault; there
-is no code dependency in either direction. See
-[docs/architecture.md](docs/architecture.md) for the full history and shape.
+**Origin.** ScribeJay grew out of LocalLLMAgent and became its own standalone
+repo in August 2026. There is no code dependency in either direction, and no
+reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
 
 ## Module map
 
@@ -47,17 +44,20 @@ is no code dependency in either direction. See
   ([docs/cli.md](docs/cli.md)). `cli/schedule.py` generates the launchd plists
   from `core/registry.py`; `cli/settings_server.py` and `cli/settings_form.py`
   are the on-demand localhost settings screen, whose every field comes from
-  `core/schema.py`. Nothing under `cli/` names an individual setting.
+  `core/schema.py`; `cli/init.py` is the first-run wizard and `cli/doctor.py`
+  the health check. Nothing under `cli/` names an individual setting — except
+  `cli/init.py`, which asks about the Tier 0 ones by name and says so.
 - `tests/` — flat pytest suite, one `test_<module>.py` per source module.
 - `config/` — `.env` (documented in `.env.example`) plus `preferences.json`,
-  both gitignored. The shipped preferences defaults live in
-  `scribejay/preferences.example.json`, inside the package: a wheel carries
-  `scribejay/` and never the sibling `config/` folder, and
-  `sinks/calendar.py` builds `CATEGORY_COLORS` from that file at import.
+  both gitignored. `config/preferences.json` is legacy and read only by
+  `migrate.py`; the shipped `persona`/`calendar`/`learnings` defaults live in
+  `core/schema.py:STRUCTURED_DEFAULTS`, because `sinks/calendar.py` builds
+  `CATEGORY_COLORS` from them at import and a file that fails to load there
+  breaks the process rather than one call.
 
-Each source/sink module is deliberately narrower than any Wren equivalent it
-grew from — read its own module docstring for exactly what was trimmed and
-why, rather than assuming parity.
+Each source/sink module is deliberately narrower than the equivalent it grew
+from — read its own module docstring for exactly what was trimmed and why,
+rather than assuming parity.
 
 ## Data sourcing policy
 
@@ -83,9 +83,9 @@ Don't.
 
 ## Untrusted content boundary
 
-ScribeJay has no tool registry and no interactive turn, so there's no
-model-driven write to gate the way Wren gates hers. But the same untrusted
-text still reaches a model that writes files: a browsed page's title, a
+ScribeJay has no tool registry and no interactive turn, so there is no
+model-driven write to gate. But the same untrusted text still reaches a model
+that writes files: a browsed page's title, a
 sent-mail subject, a commit message, a ClickUp task name all flow into a
 prompt whose output becomes a vault page or a calendar event. Keep the
 gather step compacting to plain fields (title, url, count) rather than
@@ -152,8 +152,7 @@ The default backend is a small on-device model; design around it:
 
 ## Tests must never touch production state
 
-Wren's history (the repo this split out of) has three real incidents from
-this exact mistake: tests wrote fixture rows into production `logs/`, sent
+The repo this split out of has three real incidents from this exact mistake: tests wrote fixture rows into production `logs/`, sent
 real ntfy pushes, and a daemon thread outlived its test and overwrote a
 production store. The same rules apply here, enforced by autouse fixtures in
 `tests/conftest.py`:

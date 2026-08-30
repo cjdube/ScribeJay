@@ -117,6 +117,12 @@ _forbid_production_log_handlers()
 @pytest.fixture(autouse=True)
 def _isolate_task_logs(tmp_path, monkeypatch):
     monkeypatch.setattr(_logs, "LOGS_DIR", tmp_path)
+    # The setattr covers core/logs.py, which resolved the directory once at
+    # import. Anything resolving it *per call* — scribejay/cli/doctor.py reads
+    # the last run out of these files, and writes a probe file to check the
+    # folder is writable — needs the setting itself redirected, or it lands in
+    # the developer's real logs/ folder.
+    monkeypatch.setenv("SCRIBEJAY_LOGS_DIR", str(tmp_path))
 
 
 @pytest.fixture(autouse=True)

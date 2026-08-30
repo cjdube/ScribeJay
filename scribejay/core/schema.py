@@ -27,6 +27,7 @@ representation is easier to reason about than two. Callers coerce at the point
 of use, exactly as they did when they called `os.getenv` directly.
 """
 
+import copy
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -473,6 +474,81 @@ SETTINGS: tuple[Setting, ...] = (
 )
 
 
+# ---- structured defaults ---------------------------------------------------
+# `persona`, `calendar` and `learnings` are settings too, but they are not flat
+# scalars: a list of eleven calendar categories is not "the string an
+# environment variable would carry", which is what `Setting.default` is
+# documented to hold. So they get a table of their own rather than a `Setting`
+# row with a JSON blob stuffed into it.
+#
+# These are the shipped defaults, and until Phase 6 they lived in a committed
+# `preferences.example.json` that had to be found on disk at import. Several
+# modules build a module-level constant from this data *at import*
+# (`sinks/calendar.py:CATEGORY_COLORS`, `calendar_colorizer.py:VALID_COLOR_IDS`),
+# so an install that could not find that file got an empty constant and a
+# broken process rather than one failed call. Here there is no file to find.
+#
+# `config.section()` layers the user's own `~/.scribejay/config.json` section on
+# top of nothing — a section the user has written REPLACES the default whole
+# rather than merging key by key, because a user who edits their category list
+# down to four means four, not four plus the eleven shipped ones.
+STRUCTURED_DEFAULTS: dict[str, dict] = {
+    "persona": {
+        "user_name": "Alex",
+    },
+    "calendar": {
+        # `role` is how operational code finds a category without knowing the
+        # personal name a user gave it — rename "Work" to "Day job" and the
+        # lookups still resolve. `hint` is extra wording handed to the model
+        # when it classifies an event.
+        "categories": [
+            {"name": "Work", "color_id": "1", "color_name": "Lavender",
+             "role": "work"},
+            {"name": "Volunteering", "color_id": "9", "color_name": "Blueberry"},
+            {"name": "Fitness", "color_id": "4", "color_name": "Flamingo",
+             "role": "fitness"},
+            {"name": "Meal Prep", "color_id": "10", "color_name": "Basil"},
+            {"name": "Domestic/Chores", "color_id": "5", "color_name": "Banana"},
+            {"name": "Meetings", "color_id": "3", "color_name": "Grape",
+             "hint": "with others", "role": "meetings"},
+            {"name": "Travel", "color_id": "7", "color_name": "Peacock",
+             "hint": "/ Vacation"},
+            {"name": "Dining Out", "color_id": "7", "color_name": "Peacock",
+             "hint": "(dinner reservations, date nights — not a working lunch "
+                     "or coffee, which are Meetings)"},
+            {"name": "Shows/Events", "color_id": "7", "color_name": "Peacock",
+             "hint": "(concerts, theater, sporting events)"},
+            {"name": "Appointments", "color_id": "6", "color_name": "Tangerine",
+             "hint": "(doctor, dentist, car, etc.)", "role": "appointments"},
+            {"name": "Uncategorized", "color_id": "11", "color_name": "Tomato",
+             "hint": "(only if genuinely unable to tell)", "role": "fallback"},
+        ],
+    },
+    "learnings": {
+        # What the daily reviews ignore. `excluded_domains` matches a domain
+        # and its subdomains, so "sharepoint.com" covers "tenant.sharepoint.com".
+        # `excluded_keywords` are case-insensitive substrings matched against
+        # calendar summaries, browsed-page titles, and page paths.
+        "excluded_keywords": [],
+        "excluded_domains": [
+            "sharepoint.com",
+            "office.com",
+            "office365.com",
+            "outlook.live.com",
+            "onedrive.live.com",
+            "teams.microsoft.com",
+            "microsoftonline.com",
+            "cloud.microsoft",
+        ],
+    },
+}
+
+# The sections above, in the order the wizard should walk them. `core/config.py`
+# imports this rather than keeping its own copy, so a fourth structured section
+# is one edit here.
+PREFERENCE_SECTIONS: tuple[str, ...] = tuple(STRUCTURED_DEFAULTS)
+
+
 BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
 
 # GOOGLE_API_KEY is read as an alias for GEMINI_API_KEY by the Gemini backend.
@@ -513,3 +589,12 @@ def sections() -> list[str]:
         if not s.secret and s.section not in seen:
             seen.append(s.section)
     return seen
+
+
+def structured_default(name: str) -> dict:
+    """A deep copy of one shipped preference section.
+
+    A copy, not the table itself: callers merge, sort and prune what they get
+    back, and a caller that mutated the module-level default would change what
+    every later reader in the same process sees."""
+    return copy.deepcopy(STRUCTURED_DEFAULTS.get(name, {}))

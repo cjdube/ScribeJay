@@ -1,11 +1,11 @@
 """The `scribejay` command.
 
-    scribejay init                      first-run wizard (Phase 6)
+    scribejay init                      first-run wizard
     scribejay settings                  open the settings screen in a browser
     scribejay status                    what is on and what is off
     scribejay run <task> [args...]      run one task now
     scribejay schedule install|remove|status
-    scribejay doctor                    health check (Phase 6)
+    scribejay doctor [--probe]          why is nothing appearing?
     scribejay migrate [--dry-run]       move an old config/.env into place
 
 Every subcommand is a thin wrapper over a module that already existed and can
@@ -66,6 +66,18 @@ def _cmd_schedule(args, extra: list[str]) -> int:
     }[args.action]()
 
 
+def _cmd_init(args, extra: list[str]) -> int:
+    from scribejay.cli import init
+
+    return init.main([])
+
+
+def _cmd_doctor(args, extra: list[str]) -> int:
+    from scribejay.cli import doctor
+
+    return doctor.main(["--probe"] if args.probe else [])
+
+
 def _cmd_status(args, extra: list[str]) -> int:
     from scribejay import status
 
@@ -83,21 +95,6 @@ def _cmd_migrate(args, extra: list[str]) -> int:
         sys.argv = saved
 
 
-def _cmd_not_yet(name: str, instead: str):
-    """A Phase 6 command, named here rather than left out.
-
-    Printing what to do instead is the point: a user who reads `scribejay
-    --help` and types `scribejay doctor` should learn what exists today, not
-    get "invalid choice" and conclude the tool is broken.
-    """
-    def run(args, extra: list[str]) -> int:
-        print(f"`scribejay {name}` is not built yet. Use `{instead}` for now.",
-              file=sys.stderr)
-        return 2
-
-    return run
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scribejay",
@@ -105,8 +102,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("init", help="first-run setup wizard (not built yet)")
-    p.set_defaults(func=_cmd_not_yet("init", "scribejay settings"))
+    p = sub.add_parser("init", help="first-run setup wizard")
+    p.set_defaults(func=_cmd_init)
 
     p = sub.add_parser("settings", help="open the settings screen in a browser")
     p.add_argument("--no-browser", action="store_true",
@@ -132,8 +129,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("action", choices=("install", "remove", "status"))
     p.set_defaults(func=_cmd_schedule)
 
-    p = sub.add_parser("doctor", help="explain why something is empty (not built yet)")
-    p.set_defaults(func=_cmd_not_yet("doctor", "scribejay status"))
+    p = sub.add_parser("doctor", help="explain why a page or event is missing")
+    p.add_argument("--probe", action="store_true",
+                   help="also call each switched-on source for real")
+    p.set_defaults(func=_cmd_doctor)
 
     p = sub.add_parser("migrate", help="move an old config/.env into the settings file")
     p.add_argument("--dry-run", action="store_true",

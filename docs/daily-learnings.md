@@ -28,7 +28,7 @@ detail that makes the review say what was being looked into rather than restate
 a tab title. A domain alone ("github.com") tells the model nothing; the paths do.
 
 **Exclusions.** Sites and pages matching `learnings.excluded_domains` or
-`learnings.excluded_keywords` are skipped — see [preferences](preferences.md).
+`learnings.excluded_keywords` are skipped — see [configuration](configuration.md#structured-settings--persona-calendar-learnings).
 
 **Known gap:** `NOISE_DOMAINS` drops `google.com`, so search-mediated research
 never reaches the log. If a day's review looks thin, check the unfiltered
@@ -70,4 +70,4 @@ only reviews go here; questions and nudges go to `SYNTHESIS_DIR` instead (see
 
 - [docs/ai-chat-learnings.md](ai-chat-learnings.md) — the third learnings task
 - [docs/daily-synthesis.md](daily-synthesis.md) — consumes these files the next morning
-- [docs/preferences.md](preferences.md) — the exclusion keys
+- [docs/configuration.md](configuration.md#structured-settings--persona-calendar-learnings) — the exclusion keys

@@ -15,15 +15,15 @@ import pytest
 from scribejay.core import config as prefs
 
 
-# ---- shipped file satisfies every consumer's contract -----------------------
-# scribejay/preferences.example.json is committed data several modules consume
-# at import time (scribejay/sinks/calendar.py's CATEGORY_COLORS,
+# ---- shipped defaults satisfy every consumer's contract ---------------------
+# schema.STRUCTURED_DEFAULTS is data several modules consume at import time
+# (scribejay/sinks/calendar.py's CATEGORY_COLORS,
 # scribejay/calendar_colorizer.py's VALID_COLOR_IDS); these are the schema
 # guard that keeps an edit from silently breaking one of them.
 
-def test_shipped_file_parses():
+def test_shipped_defaults_load():
     assert isinstance(prefs.PREFS, dict) and prefs.PREFS, \
-        "scribejay/preferences.example.json failed to load"
+        "schema.STRUCTURED_DEFAULTS failed to load"
 
 
 def test_persona_has_a_user_name():
@@ -307,13 +307,38 @@ def test_a_relative_path_with_no_file_beside_the_checkout_lands_in_the_config_di
         tmp_path / "google_credentials.json"
 
 
-def test_the_shipped_preferences_defaults_travel_inside_the_package():
-    """sinks/calendar.py builds CATEGORY_COLORS from this at import, so an
-    install that cannot read it boots with no calendar categories at all — not
-    a crash, just a colorizer that classifies nothing. A wheel carries
-    `scribejay/`, never the sibling `config/` folder, which is why the file
-    lives in the package."""
-    import json
-    path = prefs._packaged_prefs_path()
-    assert path.exists(), f"{path} must ship inside the package"
-    assert json.loads(path.read_text())["calendar"]["categories"]
+# ---- a bare install boots with a complete set (Phase 6c) --------------------
+# The defaults used to be a JSON file found on disk at import. sinks/calendar.py
+# builds CATEGORY_COLORS from them at import, so an install that could not find
+# that file booted with no calendar categories at all — not a crash, just a
+# colorizer that classified nothing. There is no file to find now, and these
+# pin that.
+
+def test_no_settings_file_still_yields_a_full_category_list(tmp_path, monkeypatch):
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    prefs.reload()
+    assert not prefs.config_path().exists()
+    categories = prefs.calendar_categories()
+    assert len(categories) == 11
+    assert prefs.category_color_by_role("fallback", "0") != "0"
+    assert prefs.persona().get("user_name")
+    assert prefs.section("learnings")["excluded_domains"]
+
+
+def test_a_user_section_replaces_the_shipped_one_whole(tmp_path, monkeypatch):
+    """Not a key-by-key merge: a user who cuts the list to one means one."""
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    (tmp_path / "config.json").write_text(json.dumps(
+        {"calendar": {"categories": [{"name": "Only", "color_id": "2"}]}}))
+    prefs.reload()
+    assert [c["name"] for c in prefs.calendar_categories()] == ["Only"]
+    # An untouched section still comes from the schema.
+    assert prefs.persona().get("user_name")
+
+
+def test_mutating_what_section_returns_does_not_poison_the_defaults(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    prefs.reload()
+    prefs.section("calendar")["categories"].clear()
+    prefs.reload()
+    assert len(prefs.calendar_categories()) == 11

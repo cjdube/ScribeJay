@@ -1,26 +1,21 @@
 # ScribeJay — the journaling agent
 
-ScribeJay keeps the record of what actually happened. It started life inside the
-Wren repo (LocalLLMAgent), split out on 2026-08-26 after a demo where the
-audience said out loud what the code already showed: a good part of Wren was
-journaling, which is a different job from being an interactive agent. It became
-its own standalone repo shortly after, so it can run with no Wren installed.
+ScribeJay keeps the record of what actually happened. It grew out of
+LocalLLMAgent, an interactive agent, and split into its own standalone repo in
+August 2026 — a good part of that codebase was journaling, which is a different
+job from taking requests.
 
 Code: `scribejay/`. Charter: the `scribejay/__init__.py` docstring — read it
 before adding anything here.
 
-## The seam
+## What is in scope
 
-**ScribeJay writes the record, Wren reads it.**
+ScribeJay never talks to anyone. It runs unattended under launchd and leaves
+calendar events and vault pages behind. Something else reads them.
 
-Wren is the interactive agent: she reads the record — through the calendar and
-the wiki — and takes action on request (book a meeting, set a reminder, send the
-brief). ScribeJay never talks to anyone; it runs unattended under launchd and
-leaves calendar events and vault pages behind.
-
-`tasks/daily_synthesis.py` is deliberately **not** journaling and stays with
-Wren. Journaling is "write down what was done"; synthesis applies yesterday's
-activity to notes and projects, which is reasoning.
+The line is worth stating because it keeps getting tested: journaling is "write
+down what was done". Applying yesterday's activity to notes and projects is
+reasoning — a different job, and not this repo's.
 
 ## Shape: a pipeline agent, not a tool-calling one
 
@@ -62,12 +57,12 @@ Plus two helpers: `scribejay/journal.py` (the video-list section and the
 reader, both shared by `ai_chat_learnings` and `claude_time_blocks`).
 
 **The module basenames did not change during the split, on purpose.** A
-dashboard reading a task's run history off its log file (`chat/insights.py`
-in Wren's case) derives the task's key from the log basename, not the launchd
-label — keeping `strava_download.log` et al. identical is what lets a
-dashboard reading both repos keep a task's full run history through the move.
+dashboard reading a task's run history off its log file derives the task's key
+from the log basename, not the launchd label — keeping `strava_download.log`
+et al. identical is what preserves a task's full run history through a move.
 The same rule survived packaging: the log *directory* moved to
-`~/.scribejay/logs` in Phase 5, and not one basename did.
+`~/.scribejay/logs`, and not one basename did. `scribejay doctor` reads those
+same basenames for its "last completed" line.
 
 **The eight plists are generated, not committed.** `scribejay/cli/schedule.py`
 builds them from the table below plus `core/registry.py`, so only the tasks
@@ -80,12 +75,13 @@ it survives the broken interpreter it exists to repair.
 - `scribejay/core/` — the settings/model/logging/notify/store/http/dates/
   google seam every task reads through. `core/model.py` is the one choke
   point for the model call; `core/config.py` is the settings seam (env vars
-  plus `~/.scribejay/config.json`, falling back to the defaults shipped in
-  `scribejay/preferences.example.json` — inside the package, because a wheel
-  carries `scribejay/` and never the sibling `config/` folder).
+  plus `~/.scribejay/config.json`, falling back to `core/schema.py` — both the
+  flat `SETTINGS` rows and the structured `persona`/`calendar`/`learnings`
+  defaults, so there is no data file to fail to find).
 - `scribejay/cli/` — the `scribejay` command: the argument dispatcher, the
-  generated launchd jobs (`cli/schedule.py`), and the on-demand settings
-  screen (`cli/settings_server.py`, `cli/settings_form.py`). See
+  generated launchd jobs (`cli/schedule.py`), the on-demand settings screen
+  (`cli/settings_server.py`, `cli/settings_form.py`), the first-run wizard
+  (`cli/init.py`) and the health check (`cli/doctor.py`). See
   [cli.md](cli.md).
 - `scribejay/sources/` — read-only fetchers: `calendar`, `chrome`, `clickup`,
   `git`, `gmail_sent`, `strava`, `transcripts`, `youtube`.
@@ -97,8 +93,8 @@ it survives the broken interpreter it exists to repair.
   launchd job, plus `activity.py` (the exclusion-filter and compaction
   helpers shared by the daily learnings reviews).
 
-Each source/sink module is a narrower slice of what a Wren equivalent once
-covered — read its own module docstring for exactly what was trimmed and why.
+Each source/sink module is a narrower slice of what its ancestor covered —
+read its own module docstring for exactly what was trimmed and why.
 
 ## Model backend
 
@@ -109,13 +105,13 @@ SCRIBEJAY_<TASK_KEY>_BACKEND  ->  SCRIBEJAY_LLM_BACKEND  ->  ollama
 ```
 
 Task keys match the `scribejay/` module names. There is deliberately **no**
-fallback to any Wren-style `WREN_*` variable — a silent fallback there would
-hide a missed `.env` setup. Every run logs which backend it resolved to and
-where that came from, because the failure mode is silent: an unset variable
-is not an error, just a smaller model and a thinner draft.
+fallback to any legacy `WREN_*` variable — a silent fallback there would hide a
+missed setup. Every run logs which backend it resolved to and where that came
+from, because the failure mode is silent: an unset variable is not an error,
+just a smaller model and a thinner draft.
 
-A future OpenRouter backend is one `.env` line and no code change in
-`scribejay/`.
+Gemini and OpenRouter are both selectable with no code change; see
+[llm-backend.md](llm-backend.md).
 
 ## Running one by hand
 

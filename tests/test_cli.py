@@ -81,11 +81,13 @@ def test_stray_arguments_are_refused_outside_run(capsys):
     assert "unrecognized" in capsys.readouterr().err
 
 
-def test_phase_six_commands_say_what_to_use_instead(capsys):
-    assert cli.main(["doctor"]) == 2
-    assert "scribejay status" in capsys.readouterr().err
-    assert cli.main(["init"]) == 2
-    assert "scribejay settings" in capsys.readouterr().err
+def test_every_documented_subcommand_parses():
+    """The module docstring is the list a user reads. A command named there and
+    missing from the parser is worse than one that was never mentioned."""
+    for argv in (["init"], ["settings"], ["status"], ["schedule", "status"],
+                 ["doctor"], ["doctor", "--probe"], ["migrate", "--dry-run"],
+                 ["run", "daily_commits"]):
+        assert cli.build_parser().parse_known_args(argv)
 
 
 def test_status_runs(capsys):

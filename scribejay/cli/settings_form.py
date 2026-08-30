@@ -117,13 +117,21 @@ def secret_state(key: str) -> str:
 
 # ---- validation --------------------------------------------------------------
 
-def validate_path(setting: schema.Setting, value: str) -> tuple[str, str]:
+def validate_path(setting: schema.Setting, value: str,
+                  create: bool = False) -> tuple[str, str]:
     """(stored value, error). An empty value is fine and means "use the default".
 
     Symlinks are resolved and the *resolved* path is what gets stored. A path
     setting decides where an unattended job writes, and an indirection the user
     cannot see in the form is exactly the thing that should not survive into
     the settings file.
+
+    `create=True` is the setup wizard, and only the setup wizard. It creates a
+    missing *folder* — never a file, and never before the forbidden-root check
+    below, so "make me a journal folder" can never become "make me a folder in
+    /System". The form itself passes False: a folder that vanished after setup
+    is a renamed vault, and silently recreating it would file every later page
+    somewhere the user is not looking.
     """
     if not value.strip():
         return "", ""
@@ -147,22 +155,29 @@ def validate_path(setting: schema.Setting, value: str) -> tuple[str, str]:
         return str(resolved), ""
 
     if not resolved.is_dir():
-        # Not created here on purpose. sinks/vault.py has the same rule, for
-        # the same reason: a folder that does not exist means the path is
-        # wrong, and filing pages where nobody reads them is worse than
-        # failing. The wizard creates the journal folder, once, at setup.
-        return "", (f"{setting.label}: {resolved} is not a folder that exists. "
-                    f"Create it first, or fix the path.")
+        # Not created here unless the caller is the wizard. sinks/vault.py has
+        # the same rule, for the same reason: a folder that does not exist
+        # means the path is wrong, and filing pages where nobody reads them is
+        # worse than failing.
+        if not create:
+            return "", (f"{setting.label}: {resolved} is not a folder that exists. "
+                        f"Create it first, or fix the path.")
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return "", f"{setting.label}: could not create {resolved} ({e})."
     return str(resolved), ""
 
 
-def validate(setting: schema.Setting, value: str) -> tuple[str, str]:
-    """(stored value, error) for any non-secret row."""
+def validate(setting: schema.Setting, value: str,
+             create: bool = False) -> tuple[str, str]:
+    """(stored value, error) for any non-secret row. `create` is the wizard's
+    folder-making flag; see validate_path."""
     value = value.strip()
     if not value:
         return "", ""
     if setting.type == "path":
-        return validate_path(setting, value)
+        return validate_path(setting, value, create=create)
     if setting.type in ("int", "float"):
         try:
             (int if setting.type == "int" else float)(value)
@@ -259,7 +274,7 @@ def test_feature(name: str) -> str:
 
     if name == "chrome":
         from scribejay.sources.chrome import fetch_chrome_history
-        return _rows(fetch_chrome_history(days_ago=1, max_sites=None), "history")
+        return _rows(fetch_chrome_history(days_ago=1, max_sites=None), "sites")
 
     if name == "transcripts":
         from scribejay.sources.transcripts import fetch_session_activity
@@ -287,7 +302,7 @@ def test_feature(name: str) -> str:
 
     if name == "clickup":
         from scribejay.sources.clickup import closed_tasks
-        return _rows(closed_tasks(day), "tasks")
+        return _rows(closed_tasks(day), "items")
 
     if name == "notify":
         from scribejay.core.notify import notify

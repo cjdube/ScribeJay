@@ -33,11 +33,12 @@ writer, and one thing for the settings screen to save.
 
 `persona`, `calendar` and `learnings` are personal, non-secret settings with
 real structure (a list of calendar categories, lists of exclusions) rather
-than flat scalars. They live in the same document, and until a user migrates
-they are still read from the legacy config/preferences.json — which falls back
-in turn to the defaults shipped inside the package at
-scribejay/preferences.example.json, so a fresh install boots with a valid
-schema before anyone has edited anything.
+than flat scalars. They live in the same document, in sections of their own,
+and `section()` falls back to scribejay/core/schema.py:STRUCTURED_DEFAULTS —
+so a fresh install boots with a valid set before anyone has edited anything,
+with no file to find on disk. A section the user has written replaces the
+shipped one whole rather than merging key by key: a user who cut their
+category list to four means four.
 
 ## Path settings
 
@@ -75,10 +76,10 @@ def env_path() -> Path:
 # load_dotenv does not overwrite a real environment variable.
 load_dotenv(env_path())
 
-# Sections of the settings document that hold preferences rather than flat
-# settings. Named explicitly so merging them into PREFS cannot accidentally
-# pull in [model] or [google] as though they were preferences.
-_PREF_SECTIONS = ("persona", "calendar", "learnings")
+# Sections of the settings document that hold structured preferences rather
+# than flat settings. The schema owns the list, so adding a fourth is one edit
+# there and not two that can drift apart.
+_PREF_SECTIONS = schema.PREFERENCE_SECTIONS
 
 # Problems found while loading, replayed into the first task logger that gets
 # built (see scribejay/core/logs.py). Import happens before any logger is
@@ -146,36 +147,16 @@ def resolve_path(value: str) -> Path:
     return config_dir() / path
 
 
-def _packaged_prefs_path() -> Path:
-    """The shipped preferences defaults, inside the package rather than beside
-    the repo — a wheel carries `scribejay/`, not the sibling `config/` folder,
-    and an install that cannot read this boots with no calendar categories at
-    all (scribejay/sinks/calendar.py builds CATEGORY_COLORS from it at import).
-    Phase 6c retires the file into scribejay/core/schema.py."""
-    return _ROOT / "scribejay" / "preferences.example.json"
-
-
-def _legacy_prefs_path() -> Path:
-    path = _ROOT / "config" / "preferences.json"
-    return path if path.exists() else _packaged_prefs_path()
-
-
-# `_load` returns {} for a missing file, but the legacy loader's contract is
-# that an absent preferences.json falls back to the committed example — so the
-# path is chosen before loading, not after.
-_PREFS_PATH = _legacy_prefs_path()
-
 CONFIG: dict = {}
 PREFS: dict = {}
 
 
 def reload() -> None:
-    """Re-read both files. Called at import, and again by anything that has
-    just written the settings file (the migration, the settings screen)."""
-    global CONFIG, PREFS, _PREFS_PATH
+    """Re-read the settings file. Called at import, and again by anything that
+    has just written it (the migration, the settings screen)."""
+    global CONFIG, PREFS
     CONFIG = _load(config_path())
-    _PREFS_PATH = _legacy_prefs_path()
-    merged = _load(_PREFS_PATH)
+    merged = {name: schema.structured_default(name) for name in _PREF_SECTIONS}
     for name in _PREF_SECTIONS:
         value = CONFIG.get(name)
         if isinstance(value, dict):

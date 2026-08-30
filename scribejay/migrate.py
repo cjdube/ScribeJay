@@ -85,9 +85,12 @@ def _classify(values: dict) -> tuple[list, list, list, list]:
 def _copy_preferences() -> list[str]:
     """Fold config/preferences.json into the settings document.
 
-    A stale preferences.json does not shadow anything — config.reload() layers
-    the settings file's sections on top of it — so unlike the .env it is left
-    where it is."""
+    This is now the ONLY reader of that file: since the shipped defaults moved
+    into core/schema.py, config.reload() does not look at it at all. So an
+    unmigrated checkout's edited categories reach the settings file here or
+    nowhere, which is why this stays rather than being retired with the file
+    it reads. It is left on disk rather than renamed — unlike the .env it
+    shadows nothing, so a second copy is harmless."""
     copied = []
     if not LEGACY_PREFS_PATH.exists():
         return copied

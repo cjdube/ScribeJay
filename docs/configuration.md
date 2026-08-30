@@ -40,10 +40,8 @@ empty document and logs a warning rather than crashing a scheduled task.
 
 Override the location with `SCRIBEJAY_CONFIG_DIR` (the test suite does).
 
-`persona`, `calendar`, and `learnings` are the sections that used to live in
-`config/preferences.json`. They now live here too, and this file wins where both
-have the same section. See [preferences.md](preferences.md) for what those
-sections mean.
+`persona`, `calendar`, and `learnings` are structured rather than flat, and get
+a section of their own below.
 
 ### Per-task model backend
 
@@ -83,9 +81,9 @@ The resolution order for a credential is
 explicit argument  ->  environment variable  ->  Keychain  ->  None
 ```
 
-Store one by hand, until `scribejay settings` exists (Phase 5). The prompt is
-hidden and the value never reaches a command line, so it is never visible to
-`ps`:
+`scribejay settings` and `scribejay init` are the ordinary way to store one.
+By hand, the prompt is hidden and the value never reaches a command line, so it
+is never visible to `ps`:
 
 ```bash
 .venv/bin/python -c 'import getpass; from scribejay.core import secrets; print(secrets.set("OPENROUTER_API_KEY", getpass.getpass("value: ")))'
@@ -104,14 +102,91 @@ Google OAuth is the exception: it keeps its own token file
 
 One row per setting: key, section, name, label, help, type, default, feature,
 and `secret`. It is the single source of truth for four consumers that would
-otherwise drift — config resolution, the migration, the first-run wizard, and
-the web settings form.
+otherwise drift — config resolution, the migration, `scribejay init`, and the
+web settings form.
 
 `tests/test_schema.py` walks the source tree with the `ast` module, collects
 every literal key passed to `config.getenv()`, and fails if one has no row. A
 new setting cannot be added without describing it.
 
 Adding a setting is one row plus one line in `config/.env.example`.
+
+## Structured settings — `persona`, `calendar`, `learnings`
+
+Three sections carry structure rather than a scalar: a name, a list of calendar
+categories, lists of exclusions. `Setting.default` holds "the string an
+environment variable would carry", and a list of eleven categories is not that,
+so these live in **`schema.STRUCTURED_DEFAULTS`** instead of in a `Setting`
+row. `config.section(name)` returns the user's section from
+`~/.scribejay/config.json` if there is one, and the shipped default otherwise.
+
+A section you write **replaces** the shipped one whole; it is not merged key by
+key. Cut the category list to four and you have four categories, not four plus
+the eleven that ship.
+
+These defaults used to be a `preferences.example.json` file found on disk at
+import. They are code now for one reason:
+`scribejay/sinks/calendar.py:CATEGORY_COLORS` and
+`scribejay/calendar_colorizer.py:VALID_COLOR_IDS` are computed **at import**,
+so an install that could not find that file got an empty constant and a
+colorizer that classified nothing — not a crash, just silence. There is no
+file to fail to find any more.
+
+### `persona`
+
+| Key | Used by | Purpose |
+|---|---|---|
+| `user_name` | every task's prompt-building | The name the prompts refer to |
+
+### `calendar`
+
+`categories` — the table `scribejay/calendar_colorizer.py` shows the model as
+its classification list, and that `scribejay/sinks/calendar.py` reads for
+colorIds. Each entry:
+
+| Field | Required | Purpose |
+|---|---|---|
+| `name` | yes | Category label; becomes a row in the classification table |
+| `color_id` | yes | Google Calendar colorId ("1"–"11"); need not be unique |
+| `color_name` | yes | Google's name for that colour (shown to the model) |
+| `hint` | no | Extra classification guidance appended in the colorizer prompt |
+| `role` | no | Operational tag — see below |
+
+Several categories may share one `color_id`. Distinct names classify better
+than one grab-bag category with a long `hint`.
+
+**Roles** decouple what the code needs from what you call your categories, so
+renaming "Work" to "Day job" breaks nothing. Two are read:
+
+- `fitness` — the colour Strava activities are logged with
+  (`scribejay/strava_download.py`)
+- `fallback` — the colorId the colorizer uses when it cannot classify an event
+  (`scribejay/calendar_colorizer.py`); expected on exactly one category
+
+`work`, `meetings` and `appointments` appear on the shipped categories but no
+code reads them. Retagging or removing them changes nothing.
+
+### `learnings`
+
+What the daily learnings reviews (`daily_chrome_learnings`,
+`daily_youtube_learnings`, `ai_chat_learnings`) ignore, read by
+`scribejay/activity.py`.
+
+`excluded_keywords` — subject matter kept out of the review entirely.
+Case-insensitive substrings, matched against a browsed site's title (drops the
+site) or a single page path (drops that path, keeps the site). Substring
+matching is blunt on purpose, so pick distinctive terms — a short or common one
+will over-match.
+
+`excluded_domains` — domains kept out of the reviews. Matches the domain **and
+its subdomains** (`sharepoint.com` covers `acme.sharepoint.com`), not a
+substring (`notsharepoint.com` is kept). Ports are stripped before matching. An
+empty list excludes nothing.
+
+A service's own domain is not always enough: a Salesforce-backed portal can
+serve from both `<org>.my.site.com` and `<org>.my.salesforce.com`, and both
+need listing. After adding an entry, check a real day against it — see the
+exclusion tests in `tests/test_activity.py`.
 
 ## Feature toggles
 
@@ -128,8 +203,12 @@ python -m scribejay.migrate
 ```
 
 It sorts `config/.env` into settings, Keychain secrets, per-task backends, and
-anything it does not recognise; folds `config/preferences.json` in; and then
-renames `config/.env` to `config/.env.migrated`.
+anything it does not recognise; folds an old `config/preferences.json` in; and
+then renames `config/.env` to `config/.env.migrated`.
+
+`migrate` is the **only** reader of `config/preferences.json` left. Nothing
+else looks for that file, so an install that still has one must run this once
+or its edited categories are ignored.
 
 The rename is not tidiness. The environment layer sits **above** the settings
 file, so a `.env` left in place keeps overriding everything the settings screen
