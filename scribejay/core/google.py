@@ -25,7 +25,6 @@ locked to the scopes it was originally consented to.
 
 import os
 import threading
-from pathlib import Path
 
 import httplib2
 from google.auth.transport.requests import Request
@@ -35,8 +34,6 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 from scribejay.core import config
-
-_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Outbound timeout (seconds) for every Google API call. Without it the
 # client's default httplib2 transport has NO timeout, which could hang a
@@ -70,8 +67,12 @@ def get_credentials() -> Credentials:
         if _CACHED_CREDS and _CACHED_CREDS.valid:
             return _CACHED_CREDS
 
-        creds_path = _ROOT / config.getenv("GOOGLE_CREDENTIALS_PATH")
-        token_path = _ROOT / config.getenv("GOOGLE_TOKEN_PATH")
+        # config.resolve_path, not _ROOT: installed as a tool, _ROOT is
+        # site-packages, and a relative default would name a file inside the
+        # wheel that the consent flow cannot write its token into.
+        creds_path = config.resolve_path(config.getenv("GOOGLE_CREDENTIALS_PATH"))
+        token_path = config.resolve_path(config.getenv("GOOGLE_TOKEN_PATH"))
+        token_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 
         # The OAuth client-secret file is placed by hand (downloaded from Google
         # Cloud Console) and defaults to a world-readable 0644 — unlike every

@@ -105,7 +105,7 @@ def main() -> int:
             notify_failure(
                 "strava_download",
                 f"{len(activities) - logged} of {len(activities)} activities "
-                "failed to log — see logs/strava_download.log",
+                "failed to log — see the strava_download.log log",
                 logger,
             )
         logger.info("Strava download run complete")

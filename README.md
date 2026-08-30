@@ -42,13 +42,25 @@ are billed per token by the provider**, and the jobs run unattended on a
 schedule, so switch one job at a time and watch what it costs before switching
 the rest. See [docs/llm-backend.md](docs/llm-backend.md).
 
-## Setup
+## Install
+
+```bash
+uv tool install scribejay
+scribejay settings          # opens a settings page in your browser
+scribejay schedule install  # schedules the jobs your sources are on for
+```
+
+macOS only — the schedule is launchd and the credential store is the macOS
+Keychain. See [docs/cli.md](docs/cli.md) for every command.
+
+From a source checkout instead:
 
 ```bash
 git clone <this repo>
 cd ScribeJay
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m scribejay.cli status
 ```
 
 Settings live in `~/.scribejay/config.json`; secrets live in the macOS
@@ -65,15 +77,19 @@ local callback port for that flow.
 
 Personal, non-secret settings — your name and your calendar category colors —
 are the `persona`, `calendar`, and `learnings` sections of the same file. See
-[docs/preferences.md](docs/preferences.md) for the schema; the committed
-`config/preferences.example.json` is a safe default if you skip this step.
+[docs/preferences.md](docs/preferences.md) for the schema; the defaults
+shipped in `scribejay/preferences.example.json` are safe if you skip this step.
 
 **Upgrading an existing install** that still has a `config/.env`:
 
 ```bash
-.venv/bin/python -m scribejay.migrate --dry-run   # show what would move
-.venv/bin/python -m scribejay.migrate
+scribejay migrate --dry-run   # show what would move
+scribejay migrate
 ```
+
+Logs moved in this release: `~/.scribejay/logs/` instead of `logs/` beside the
+repo. The **file names** did not change — run history is keyed off them — and a
+`SCRIBEJAY_LOGS_DIR` you had already set is still honoured.
 
 ## Optional sources
 
@@ -98,27 +114,34 @@ Run the test suite:
 By hand, for testing:
 
 ```bash
-.venv/bin/python -m scribejay.daily_chrome_learnings
+scribejay run daily_chrome_learnings
+scribejay run daily_commits --date 2026-08-29
 ```
 
-Most jobs support `--dry-run` (no write) — check the module's `main()` for
-its flags.
+Arguments after the task name go to the task itself — see
+`python -m scribejay.<task> --help` for its flags. Most jobs support
+`--dry-run` (no write).
 
 ## Scheduling
 
 ```bash
-./launchd/install.sh              # installs all 8 agents
-launchctl list | grep scribejay   # check status
-launchctl kickstart -k gui/$(id -u)/local.scribejay.dailycommits   # run one now
+scribejay schedule install   # only the jobs whose sources you have on
+scribejay schedule status    # what is installed, and what launchd has loaded
+scribejay schedule remove
 ```
 
-Re-running `install.sh` is safe — it boots out and reinstalls. After editing
-a `.plist`, re-run `install.sh` (or just that one plist's path) to pick up
-the change. See [docs/logs.md](docs/logs.md) for where each job's output
-lands.
+The eight plists are **generated** from `scribejay/core/registry.py`, not
+committed. Turn a source off and its job is removed rather than left to skip
+politely every morning, so re-run `install` after changing anything in
+settings. The one committed agent is `local.scribejay.selfheal`, which repairs
+the others after a Homebrew python upgrade and is installed by
+`./launchd/install.sh`. See [docs/cli.md](docs/cli.md) and
+[docs/logs.md](docs/logs.md).
 
 ## Docs
 
+- [docs/cli.md](docs/cli.md) — the `scribejay` command, the settings screen,
+  and the generated launchd jobs
 - [docs/architecture.md](docs/architecture.md) — the pipeline shape, module
   layout, and the split's history
 - [docs/configuration.md](docs/configuration.md) — settings, the resolution

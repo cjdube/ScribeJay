@@ -1,0 +1,63 @@
+# Packaging for `uv tool install scribejay`.
+#
+# The release bar for this project is "a stranger can install it" — no Apple
+# Developer ID, no signed .app, no notarization. A console script and a wheel
+# are the whole distribution story, and macOS is the only supported platform
+# because the schedule is launchd and the credential store is the Keychain.
+#
+# Dependencies mirror requirements.txt, which states intent and is still what a
+# developer installs from. The pins here are the same pins: a rebuild that
+# floats a version is the drift that file exists to prevent.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scribejay"
+version = "0.5.0"
+description = "A local-first journaling agent: it keeps the record of what actually happened."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+authors = [{ name = "Craig Dube" }]
+keywords = ["journaling", "obsidian", "launchd", "local-first", "ollama"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: News/Diary",
+]
+
+dependencies = [
+    "requests==2.34.2",
+    "python-dotenv==1.2.2",
+    "google-api-python-client==2.198.0",
+    "google-auth-httplib2==0.4.0",
+    "google-auth-oauthlib==1.4.0",
+    "httplib2==0.32.0",
+]
+
+# Imported lazily, only when SCRIBEJAY_LLM_BACKEND=gemini is selected, so a
+# purely local (Ollama) install never loads it and need not install it.
+[project.optional-dependencies]
+gemini = ["google-genai==2.11.0"]
+dev = ["google-genai==2.11.0", "pytest==9.1.1"]
+
+[project.scripts]
+scribejay = "scribejay.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["scribejay*"]
+
+# persona.md is read at runtime by the tasks that write prose, so it has to
+# travel inside the wheel rather than sitting beside a checkout.
+[tool.setuptools.package-data]
+scribejay = ["persona.md", "preferences.example.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

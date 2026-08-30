@@ -43,9 +43,17 @@ is no code dependency in either direction. See
   table), plus `activity.py` (exclusion-filter and compaction helpers shared
   by the daily learnings reviews) and `journal.py` /
   `sources/transcripts.py` (shared helpers).
+- `scribejay/cli/` — the `scribejay` console command
+  ([docs/cli.md](docs/cli.md)). `cli/schedule.py` generates the launchd plists
+  from `core/registry.py`; `cli/settings_server.py` and `cli/settings_form.py`
+  are the on-demand localhost settings screen, whose every field comes from
+  `core/schema.py`. Nothing under `cli/` names an individual setting.
 - `tests/` — flat pytest suite, one `test_<module>.py` per source module.
-- `config/` — `.env` (documented in `.env.example`) plus
-  `preferences.json` (documented in `.example.json`), both gitignored.
+- `config/` — `.env` (documented in `.env.example`) plus `preferences.json`,
+  both gitignored. The shipped preferences defaults live in
+  `scribejay/preferences.example.json`, inside the package: a wheel carries
+  `scribejay/` and never the sibling `config/` folder, and
+  `sinks/calendar.py` builds `CATEGORY_COLORS` from that file at import.
 
 Each source/sink module is deliberately narrower than any Wren equivalent it
 grew from — read its own module docstring for exactly what was trimmed and
@@ -114,8 +122,9 @@ The default backend is a small on-device model; design around it:
 
 - **New scheduled task**: `scribejay/<name>.py` with `main() -> int`,
   `setup_logger` and `notify_failure` from `scribejay/core/logs.py`, plus a
-  launchd plist (`local.scribejay.*`) in `launchd/`. Add a row to
-  `scribejay/core/registry.py` and call `registry.skip_if_disabled(...)`
+  row in `scribejay/core/registry.py` — the launchd plist is **generated** from
+  that row by `scribejay/cli/schedule.py`, so do not write one. Call
+  `registry.skip_if_disabled(...)`
   immediately after the opening log line — **before any gather**, or a
   declined source still gets read. **Log `Starting <name>
   run` on entry and `<name> run complete` on every success path** (and
@@ -130,7 +139,11 @@ The default backend is a small on-device model; design around it:
   seam itself. Every key needs a row in `scribejay/core/schema.py`
   (`tests/test_schema.py` walks the source and fails without one) and a line
   in `config/.env.example`. A credential gets `secret=True` and lives in the
-  Keychain, never in a file.
+  Keychain, never in a file. A `type="path"` value goes through
+  `config.resolve_path()`, never `Path(value)`: a relative setting means
+  "beside the checkout, or under `~/.scribejay`", and installed as a tool
+  there is no checkout — anything defaulting beside the source tree defaults
+  into site-packages.
 - **Tests**: one `tests/test_<module>.py` per module; monkeypatch all
   network/model/Google collaborators; no real network calls.
 - **Git**: commit straight to `main` — no feature branches.

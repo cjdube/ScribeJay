@@ -8,17 +8,22 @@ always pushes its own alert immediately.
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from scribejay.core import config
 from scribejay.core.notify import notify
 
-_ROOT = Path(__file__).resolve().parent.parent.parent
-LOGS_DIR = Path(config.getenv("SCRIBEJAY_LOGS_DIR")).expanduser()
+# ~/.scribejay/logs by default, not logs/ beside the source. Installed with
+# `uv tool install` there is no source tree to write beside — it is
+# site-packages. The directory moved in Phase 5; the FILE NAMES did not, and
+# must not: docs/architecture.md is explicit that run history is keyed off the
+# basenames.
+LOGS_DIR = config.resolve_path(config.getenv("SCRIBEJAY_LOGS_DIR"))
 
 
 def setup_logger(task_name: str) -> logging.Logger:
-    LOGS_DIR.mkdir(exist_ok=True)
+    # parents=True: the default now sits two levels down (~/.scribejay/logs),
+    # and the first task to run may be the first thing to need either level.
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
     log_path = LOGS_DIR / f"{task_name}.log"
 
     logger = logging.getLogger(task_name)

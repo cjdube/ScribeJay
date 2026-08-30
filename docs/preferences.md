@@ -21,7 +21,8 @@ ScribeJay separates three kinds of configuration:
   `scribejay/core/schema.py`.
 
 The preferences sections are loaded once at import by
-`scribejay/core/config.py`, which falls back to `preferences.example.json` when
+`scribejay/core/config.py`, which falls back to the packaged
+`scribejay/preferences.example.json` when
 you have not made your own copy — so a fresh clone boots with a valid schema.
 A file that exists but is unparseable degrades to `{}` (nothing crashes), but
 every consumer below then runs with generic/empty values — several of them
@@ -94,5 +95,5 @@ exclusion tests in `tests/test_activity.py`).
 
 `projects`, `morning_brief`, `sports`, `location`, and `job_search` are
 LocalLLMAgent-only keys — no ScribeJay module reads them. They may still
-appear in `preferences.example.json` for schema parity with the sibling
+appear in `scribejay/preferences.example.json` for schema parity with the sibling
 repo's file, but leaving them out costs nothing here.

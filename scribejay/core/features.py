@@ -28,7 +28,6 @@ only answers about a feature.
 """
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from scribejay.core import config
 
@@ -117,8 +116,12 @@ def _credentials_present(*keys: str) -> bool:
 
 
 def _path_setting_exists(key: str) -> bool:
+    """config.resolve_path, not Path(value) — a relative setting means "beside
+    the checkout, or under ~/.scribejay", never "relative to whatever directory
+    launchd happened to start the job in". Probing it any other way would let
+    the probe and the code that reads the file disagree about which file."""
     value = config.getenv(key)
-    return bool(value) and Path(value).expanduser().exists()
+    return bool(value) and config.resolve_path(value).exists()
 
 
 def configured(name: str) -> bool:

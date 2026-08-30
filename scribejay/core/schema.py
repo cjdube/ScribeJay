@@ -27,6 +27,7 @@ representation is easier to reason about than two. Callers coerce at the point
 of use, exactly as they did when they called `os.getenv` directly.
 """
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -72,7 +73,13 @@ class Setting:
 # Defaults that are computed from the running machine rather than written out,
 # so the schema and the module that used to own the constant cannot disagree.
 _HOME = Path.home()
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# ScribeJay's own directory, and the answer to "where does a path default point
+# when there is no checkout to point at". Installed with `uv tool install`, the
+# package sits in site-packages, so anything defaulting beside the source tree
+# would default somewhere read-only that no user can find. Spelled out here
+# rather than imported from core/config.py, which imports this module.
+_CONFIG_HOME = Path(os.environ.get("SCRIBEJAY_CONFIG_DIR") or (_HOME / ".scribejay"))
 
 
 SETTINGS: tuple[Setting, ...] = (
@@ -87,8 +94,10 @@ SETTINGS: tuple[Setting, ...] = (
     Setting(
         key="SCRIBEJAY_LOGS_DIR", section="core", name="logs_dir",
         label="Log directory", type="path",
-        help="Where each task writes its run log. One file per task.",
-        default=str(_REPO_ROOT / "logs"),
+        help="Where each task writes its run log. One file per task. The "
+             "file names are the task names and must not change: run history "
+             "is keyed off them.",
+        default=str(_CONFIG_HOME / "logs"),
     ),
     Setting(
         key="LEARNINGS_DIR", section="output", name="learnings_dir", type="path",
@@ -231,8 +240,9 @@ SETTINGS: tuple[Setting, ...] = (
         type="path", feature="google",
         label="OAuth client file",
         help="The client-secret JSON downloaded from Google Cloud Console. "
-             "Relative paths are resolved against the ScribeJay install.",
-        default="config/google_credentials.json",
+             "A relative path is resolved against a source checkout if the "
+             "file is there, and against ~/.scribejay otherwise.",
+        default=str(_CONFIG_HOME / "google_credentials.json"),
     ),
     Setting(
         key="GOOGLE_TOKEN_PATH", section="google", name="token_path",
@@ -240,7 +250,7 @@ SETTINGS: tuple[Setting, ...] = (
         label="OAuth token cache",
         help="Where the token is stored after the one-time browser consent. "
              "Written by Google's own library, so it is not a Keychain item.",
-        default="config/google_token.json",
+        default=str(_CONFIG_HOME / "google_token.json"),
     ),
     Setting(
         key="GOOGLE_CALENDAR_ID", section="google", name="calendar_id", feature="google",

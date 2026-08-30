@@ -24,6 +24,13 @@ What ScribeJay DOES have, and must protect the same way:
   it silently decides every setting the suite sees. `core/secrets.py` reads
   and writes their real login Keychain. All three are production state; all
   three are redirected or stubbed below.
+- `scribejay schedule install` writes plists into the user's real
+  ~/Library/LaunchAgents and runs `launchctl bootstrap` on them. That is the
+  user's actual schedule; a test that reached it could unload their jobs.
+  Both the directory and the launchctl subprocess are redirected below.
+- `scribejay settings` binds a socket and opens a browser. Neither happens in
+  a test: `serve()` is never called, and `webbrowser.open` is stubbed so a
+  missed one cannot pop a window on the developer's screen mid-suite.
 - `daily_commits` reads the machine: `sources/git.py` walks PROJECTS_DIR
   (defaulting to the developer's real ~/Projects) and shells out to git for
   every checkout there — including `fetch_repos()`, which runs `git fetch
@@ -66,6 +73,8 @@ from scribejay.sinks import email as _email  # noqa: E402
 from scribejay.sources import clickup as _clickup  # noqa: E402
 from scribejay.sources import transcripts as _chat_transcripts  # noqa: E402
 from scribejay import ai_chat_learnings as _ai_chat_learnings  # noqa: E402
+from scribejay.cli import schedule as _schedule  # noqa: E402
+from scribejay.cli import settings_server as _settings_server  # noqa: E402
 
 # Resolved from the source tree rather than from any redirect, so it still names
 # the real directory when a redirect is the thing that's broken.
@@ -294,3 +303,39 @@ def _block_keychain(monkeypatch):
         return _NotFound()
 
     monkeypatch.setattr(_secrets, "_run", _stub)
+
+
+class _LaunchctlCall(BaseException):
+    """Deliberately NOT an Exception. schedule.install() ignores a bootout
+    failure by design (an agent that was not loaded is fine), so an ordinary
+    error raised here would be swallowed by the code it is guarding."""
+
+
+@pytest.fixture(autouse=True)
+def _isolate_launch_agents(tmp_path, monkeypatch):
+    """Point the plist writer at tmp and make launchctl raise.
+
+    `scribejay/cli/schedule.py` writes into ~/Library/LaunchAgents and then
+    bootstraps each file — the user's real schedule, and the one piece of
+    production state in this repo that another human's Mac depends on being
+    correct. tests/test_schedule.py re-patches `_launchctl` per test to assert
+    what would have been run."""
+    monkeypatch.setattr(_schedule, "LAUNCH_AGENTS", tmp_path / "LaunchAgents")
+
+    def _blocked(*args):
+        raise _LaunchctlCall(
+            f"a test reached the real launchctl ({' '.join(args)}) — stub "
+            "scribejay.cli.schedule._launchctl in that test."
+        )
+
+    monkeypatch.setattr(_schedule, "_launchctl", _blocked)
+
+
+@pytest.fixture(autouse=True)
+def _block_browser_open(monkeypatch):
+    """settings_server.serve() opens a browser window. Nothing in the suite
+    calls serve(), and this is the backstop that keeps it that way harmless."""
+    def _blocked(*a, **k):
+        raise RuntimeError("a test tried to open a real browser window")
+
+    monkeypatch.setattr(_settings_server.webbrowser, "open", _blocked)

@@ -64,16 +64,29 @@ reader, both shared by `ai_chat_learnings` and `claude_time_blocks`).
 **The module basenames did not change during the split, on purpose.** A
 dashboard reading a task's run history off its log file (`chat/insights.py`
 in Wren's case) derives the task's key from the log basename, not the launchd
-label — keeping `logs/strava_download.log` et al. identical is what lets a
+label — keeping `strava_download.log` et al. identical is what lets a
 dashboard reading both repos keep a task's full run history through the move.
+The same rule survived packaging: the log *directory* moved to
+`~/.scribejay/logs` in Phase 5, and not one basename did.
+
+**The eight plists are generated, not committed.** `scribejay/cli/schedule.py`
+builds them from the table below plus `core/registry.py`, so only the tasks
+whose sources the user wants get installed at all. `local.scribejay.selfheal`
+is the exception and stays a file — it runs under Apple-signed `/bin/bash` so
+it survives the broken interpreter it exists to repair.
 
 ## Module layout
 
 - `scribejay/core/` — the settings/model/logging/notify/store/http/dates/
   google seam every task reads through. `core/model.py` is the one choke
   point for the model call; `core/config.py` is the settings seam (env vars
-  plus `config/preferences.json`, gitignored, falling back to the committed
-  `config/preferences.example.json`).
+  plus `~/.scribejay/config.json`, falling back to the defaults shipped in
+  `scribejay/preferences.example.json` — inside the package, because a wheel
+  carries `scribejay/` and never the sibling `config/` folder).
+- `scribejay/cli/` — the `scribejay` command: the argument dispatcher, the
+  generated launchd jobs (`cli/schedule.py`), and the on-demand settings
+  screen (`cli/settings_server.py`, `cli/settings_form.py`). See
+  [cli.md](cli.md).
 - `scribejay/sources/` — read-only fetchers: `calendar`, `chrome`, `clickup`,
   `git`, `gmail_sent`, `strava`, `transcripts`, `youtube`.
 - `scribejay/sinks/` — write-only: `calendar` (log an event, recolor one),

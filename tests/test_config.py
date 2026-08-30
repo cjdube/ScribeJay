@@ -16,14 +16,14 @@ from scribejay.core import config as prefs
 
 
 # ---- shipped file satisfies every consumer's contract -----------------------
-# config/preferences.example.json is committed data several modules consume
+# scribejay/preferences.example.json is committed data several modules consume
 # at import time (scribejay/sinks/calendar.py's CATEGORY_COLORS,
 # scribejay/calendar_colorizer.py's VALID_COLOR_IDS); these are the schema
 # guard that keeps an edit from silently breaking one of them.
 
 def test_shipped_file_parses():
     assert isinstance(prefs.PREFS, dict) and prefs.PREFS, \
-        "config/preferences.example.json failed to load"
+        "scribejay/preferences.example.json failed to load"
 
 
 def test_persona_has_a_user_name():
@@ -273,3 +273,47 @@ def test_a_failed_save_leaves_the_old_file_intact(monkeypatch, tmp_path):
         prefs.flush()
     assert (tmp_path / "config.json").read_text() == before
     assert not list(tmp_path.glob(".*tmp")), "the temp file should be cleaned up"
+
+
+# ---- resolve_path -------------------------------------------------------------
+# A relative path setting meant "beside the checkout" for as long as ScribeJay
+# was only ever a checkout. Installed with `uv tool install`, the package sits
+# in site-packages, where that same relative path names a file nobody can write.
+# Both meanings have to keep working, which is what these pin.
+
+def test_resolve_path_leaves_an_absolute_path_alone(tmp_path):
+    assert prefs.resolve_path(str(tmp_path / "x")) == tmp_path / "x"
+
+
+def test_resolve_path_expands_a_tilde():
+    from pathlib import Path
+    assert prefs.resolve_path("~/x") == Path.home() / "x"
+
+
+def test_a_relative_path_resolves_beside_the_checkout_when_it_is_there():
+    # config/.env.example is committed, so it is the one relative path that is
+    # certainly present in a checkout. An existing install's configured
+    # `config/google_credentials.json` must keep resolving to the file it has
+    # been using for a year.
+    resolved = prefs.resolve_path("config/.env.example")
+    assert resolved.exists()
+    assert resolved.name == ".env.example"
+
+
+def test_a_relative_path_with_no_file_beside_the_checkout_lands_in_the_config_dir(
+        monkeypatch, tmp_path):
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    assert prefs.resolve_path("google_credentials.json") == \
+        tmp_path / "google_credentials.json"
+
+
+def test_the_shipped_preferences_defaults_travel_inside_the_package():
+    """sinks/calendar.py builds CATEGORY_COLORS from this at import, so an
+    install that cannot read it boots with no calendar categories at all — not
+    a crash, just a colorizer that classifies nothing. A wheel carries
+    `scribejay/`, never the sibling `config/` folder, which is why the file
+    lives in the package."""
+    import json
+    path = prefs._packaged_prefs_path()
+    assert path.exists(), f"{path} must ship inside the package"
+    assert json.loads(path.read_text())["calendar"]["categories"]

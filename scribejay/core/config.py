@@ -35,8 +35,17 @@ writer, and one thing for the settings screen to save.
 real structure (a list of calendar categories, lists of exclusions) rather
 than flat scalars. They live in the same document, and until a user migrates
 they are still read from the legacy config/preferences.json — which falls back
-in turn to the committed config/preferences.example.json, so a fresh clone
-boots with a valid schema before anyone has edited anything.
+in turn to the defaults shipped inside the package at
+scribejay/preferences.example.json, so a fresh install boots with a valid
+schema before anyone has edited anything.
+
+## Path settings
+
+`resolve_path()` is how a path setting becomes a real path. Relative values
+predate packaging and still name files beside a checkout; installed as a tool
+they have to mean `~/.scribejay/`. Every reader of a `type="path"` setting that
+may be relative goes through it, so the settings screen, the feature probe and
+the code doing the work cannot disagree about which file they mean.
 """
 
 import json
@@ -110,9 +119,45 @@ def _load(path: Path) -> dict:
     return data
 
 
+def resolve_path(value: str) -> Path:
+    """Turn a path setting into an absolute Path.
+
+    `~` expands. An absolute path is taken as written. A *relative* one is the
+    interesting case, and it has two legitimate meanings depending on how
+    ScribeJay was installed:
+
+      - In a source checkout, `config/google_credentials.json` means the file
+        beside the repo, which is what every install before packaging meant and
+        what those installs still have on disk.
+      - Installed as a tool, `_ROOT` is site-packages, so that same relative
+        path names a file inside the wheel that nobody can put anything into.
+        There it has to mean `~/.scribejay/`.
+
+    So: the checkout wins when the file is actually there, and the config
+    directory is the answer otherwise. An existing install keeps resolving to
+    the file it has been using; a fresh one resolves somewhere writable.
+    """
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path
+    legacy = _ROOT / path
+    if legacy.exists():
+        return legacy
+    return config_dir() / path
+
+
+def _packaged_prefs_path() -> Path:
+    """The shipped preferences defaults, inside the package rather than beside
+    the repo — a wheel carries `scribejay/`, not the sibling `config/` folder,
+    and an install that cannot read this boots with no calendar categories at
+    all (scribejay/sinks/calendar.py builds CATEGORY_COLORS from it at import).
+    Phase 6c retires the file into scribejay/core/schema.py."""
+    return _ROOT / "scribejay" / "preferences.example.json"
+
+
 def _legacy_prefs_path() -> Path:
     path = _ROOT / "config" / "preferences.json"
-    return path if path.exists() else _ROOT / "config" / "preferences.example.json"
+    return path if path.exists() else _packaged_prefs_path()
 
 
 # `_load` returns {} for a missing file, but the legacy loader's contract is
