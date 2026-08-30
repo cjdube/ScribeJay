@@ -62,11 +62,11 @@ someone had decided.
 
 ## Secrets live in the macOS Keychain
 
-Seven keys never touch the settings file:
+Eight keys never touch the settings file:
 
-`GEMINI_API_KEY` (and its `GOOGLE_API_KEY` alias), `STRAVA_CLIENT_ID`,
-`STRAVA_CLIENT_SECRET`, `STRAVA_REFRESH_TOKEN`, `CLICKUP_API_TOKEN`,
-`NTFY_TOKEN`.
+`GEMINI_API_KEY` (and its `GOOGLE_API_KEY` alias), `OPENROUTER_API_KEY`,
+`STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REFRESH_TOKEN`,
+`CLICKUP_API_TOKEN`, `NTFY_TOKEN`.
 
 They are stored as generic passwords under service `com.scribejay`, read through
 `scribejay/core/secrets.py`, which shells out to the Apple-signed
@@ -81,6 +81,14 @@ The resolution order for a credential is
 
 ```
 explicit argument  ->  environment variable  ->  Keychain  ->  None
+```
+
+Store one by hand, until `scribejay settings` exists (Phase 5). The prompt is
+hidden and the value never reaches a command line, so it is never visible to
+`ps`:
+
+```bash
+.venv/bin/python -c 'import getpass; from scribejay.core import secrets; print(secrets.set("OPENROUTER_API_KEY", getpass.getpass("value: ")))'
 ```
 
 Inspect them by hand:

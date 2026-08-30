@@ -201,6 +201,13 @@ def test_gemini_client_is_blocked():
         gemini._gemini_client()
 
 
+def test_openrouter_egress_is_blocked():
+    from scribejay.core.backends import openrouter
+
+    with pytest.raises(RuntimeError, match="OpenRouter"):
+        openrouter._post({}, 1.0)
+
+
 def test_real_email_send_is_blocked():
     from scribejay.sinks import email
 

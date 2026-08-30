@@ -453,13 +453,28 @@ def test_log_backend_names_the_per_task_var(monkeypatch, caplog):
 def test_llm_chat_dispatch_and_unknown_backend(monkeypatch):
     monkeypatch.delenv("SCRIBEJAY_LLM_BACKEND", raising=False)
     monkeypatch.setattr(model, "_gemini_chat", lambda messages, **kwargs: {"content": "cloud"})
+    monkeypatch.setattr(model, "_openrouter_chat",
+                        lambda messages, **kwargs: {"content": "router"})
 
     assert model._llm_chat([{"role": "user", "content": "hi"}],
                            backend="gemini")["content"] == "cloud"
+    assert model._llm_chat([{"role": "user", "content": "hi"}],
+                           backend="openrouter")["content"] == "router"
 
     monkeypatch.setenv("SCRIBEJAY_LLM_BACKEND", "nonsense")
     with pytest.raises(ValueError):
         model._llm_chat([{"role": "user", "content": "hi"}])
+
+
+def test_openrouter_is_reached_through_the_settings_chain(monkeypatch):
+    # The per-task and global variables are what a settings screen writes, so
+    # pin that they actually route here — not just the explicit argument.
+    monkeypatch.setattr(model, "_openrouter_chat",
+                        lambda messages, **kwargs: {"content": "router"})
+    monkeypatch.setenv("SCRIBEJAY_LLM_BACKEND", "openrouter")
+
+    assert model.backend("daily_commits") == "openrouter"
+    assert model._llm_chat([{"role": "user", "content": "hi"}])["content"] == "router"
 
 
 # --------------------------------------------------------------------------- #

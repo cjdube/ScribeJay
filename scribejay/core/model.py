@@ -36,6 +36,7 @@ import requests
 
 from scribejay.core import config
 from scribejay.core.backends.gemini import GEMINI_DEFAULT_MODEL, _gemini_chat
+from scribejay.core.backends.openrouter import _openrouter_chat
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -325,8 +326,13 @@ def _llm_chat(
     elif b in ("gemini", "google"):
         message = _gemini_chat(messages, model=model, timeout=timeout,
                                logger=logger, think=think)
+    elif b == "openrouter":
+        message = _openrouter_chat(messages, model=model, timeout=timeout,
+                                   logger=logger, think=think)
     else:
-        raise ValueError(f"unknown SCRIBEJAY_LLM_BACKEND {b!r} (expected 'ollama' or 'gemini')")
+        raise ValueError(
+            f"unknown SCRIBEJAY_LLM_BACKEND {b!r} "
+            f"(expected 'ollama', 'gemini' or 'openrouter')")
     content = _strip_think_markup(message.get("content") or "")
     message["content"] = _latex_to_unicode(content)
     return message

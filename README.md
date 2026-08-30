@@ -36,8 +36,11 @@ URL, and file structure.
   recolored in place (the colorizer), via `scribejay/sinks/calendar.py`.
 
 Nothing ships to a cloud model at runtime by default — the local Ollama
-backend is the default for every job. A cloud backend (Gemini) is opt-in per
-job; see [docs/llm-backend.md](docs/llm-backend.md).
+backend is the default for every job, and it is free. A cloud backend (Gemini,
+or OpenRouter for any frontier model behind one key) is opt-in per job. **Both
+are billed per token by the provider**, and the jobs run unattended on a
+schedule, so switch one job at a time and watch what it costs before switching
+the rest. See [docs/llm-backend.md](docs/llm-backend.md).
 
 ## Setup
 
@@ -52,7 +55,7 @@ Settings live in `~/.scribejay/config.json`; secrets live in the macOS
 Keychain, never in a file. Every setting is described once, in
 `scribejay/core/schema.py` — `config/.env.example` lists the same keys with
 notes on where to get each value (Google OAuth credentials, an Ollama host,
-optionally a Strava/ClickUp/Gemini/ntfy key). See
+optionally a Strava/ClickUp/Gemini/OpenRouter/ntfy key). See
 [docs/configuration.md](docs/configuration.md) for the file, the layering, and
 the Keychain.
 

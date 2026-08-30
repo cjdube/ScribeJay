@@ -123,10 +123,13 @@ SETTINGS: tuple[Setting, ...] = (
     # fallback lives in model._resolve_backend, and stays there.
     Setting(
         key="SCRIBEJAY_LLM_BACKEND", section="model", name="backend", type="choice",
-        label="Model backend", choices=("ollama", "gemini"),
-        help="Which model writes the summaries. Unset means local Ollama, and "
-             "nothing leaves the machine. 'gemini' sends that task's gathered "
-             "input to Google. Overridable per task under [model.per_task].",
+        label="Model backend", choices=("ollama", "gemini", "openrouter"),
+        help="Which model writes the summaries. Unset means local Ollama: free, "
+             "and nothing leaves the machine. Both cloud backends are billed "
+             "per token by the provider — 'gemini' sends that task's gathered "
+             "input to Google, 'openrouter' sends it to OpenRouter and on to "
+             "whichever model you pick there. Overridable per task under "
+             "[model.per_task].",
         default=None,
     ),
     Setting(
@@ -195,6 +198,31 @@ SETTINGS: tuple[Setting, ...] = (
         label="Gemini API key",
         help="Only needed if you pick the 'gemini' backend. From "
              "https://aistudio.google.com/apikey.",
+    ),
+    Setting(
+        key="OPENROUTER_MODEL", section="model", name="openrouter_model",
+        label="OpenRouter model",
+        help="Used only when the backend is 'openrouter'. A slug from "
+             "https://openrouter.ai/models, e.g. anthropic/claude-sonnet-5 "
+             "(the default, and a paid frontier model), or an @preset/ slug. "
+             "The models page prices every slug; a ':free' one costs nothing.",
+        default="anthropic/claude-sonnet-5",
+    ),
+    Setting(
+        key="OPENROUTER_MAX_OUTPUT_TOKENS", section="model",
+        name="openrouter_max_output_tokens", type="int",
+        label="OpenRouter output budget (tokens)",
+        help="Ceiling on one OpenRouter reply. On a reasoning model the "
+             "reasoning is billed and can be drawn from this budget, which is "
+             "why template-filling calls pass think=False.",
+        default="8192",
+    ),
+    Setting(
+        key="OPENROUTER_API_KEY", section="model", name="openrouter_api_key",
+        secret=True, label="OpenRouter API key",
+        help="Only needed if you pick the 'openrouter' backend. From "
+             "https://openrouter.ai/keys. Every run on this backend spends "
+             "credit on that key.",
     ),
 
     # ---- google -------------------------------------------------------------

@@ -61,6 +61,7 @@ from scribejay.core import logs as _logs  # noqa: E402
 from scribejay.core import secrets as _secrets  # noqa: E402
 from scribejay.core import notify as _notify  # noqa: E402
 from scribejay.core.backends import gemini as _gemini_backend  # noqa: E402
+from scribejay.core.backends import openrouter as _openrouter_backend  # noqa: E402
 from scribejay.sinks import email as _email  # noqa: E402
 from scribejay.sources import clickup as _clickup  # noqa: E402
 from scribejay.sources import transcripts as _chat_transcripts  # noqa: E402
@@ -212,6 +213,20 @@ def _block_gemini_client(monkeypatch):
             "real Gemini client blocked in tests — stub "
             "scribejay.core.backends.gemini._gemini_client")
     monkeypatch.setattr(_gemini_backend, "_gemini_client", _no_real_gemini)
+
+
+@pytest.fixture(autouse=True)
+def _block_openrouter_egress(monkeypatch):
+    """The second cloud backend, guarded the same way as the first.
+
+    _post() resolves the user's real OPENROUTER_API_KEY through the same
+    layers a scheduled run does, so an unstubbed call is live, billed egress
+    to openrouter.ai. test_openrouter_backend.py re-patches this per test."""
+    def _no_real_openrouter(*a, **k):
+        raise RuntimeError(
+            "real OpenRouter call blocked in tests — stub "
+            "scribejay.core.backends.openrouter._post")
+    monkeypatch.setattr(_openrouter_backend, "_post", _no_real_openrouter)
 
 
 @pytest.fixture(autouse=True)
