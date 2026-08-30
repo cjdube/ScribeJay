@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scribejay.core import registry
 from scribejay.core.dates import local_timezone, prior_day
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.correspondence import (
@@ -78,6 +79,9 @@ def main() -> int:
 
     logger = setup_logger("daily_correspondence")
     logger.info("Starting daily correspondence run")
+
+    if registry.skip_if_disabled("daily_correspondence", logger):
+        return 0
 
     try:
         # Identity, resolved once: every filter and every people list is "everyone

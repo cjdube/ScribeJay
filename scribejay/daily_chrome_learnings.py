@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scribejay.activity import MAX_PAGES_PER_SITE, compact_sites
-from scribejay.core import config
+from scribejay.core import config, registry
 from scribejay.core.dates import prior_day
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
@@ -74,6 +74,9 @@ Output ONLY the filled-in template text, nothing else — no preamble, no explan
 def main() -> int:
     logger = setup_logger("daily_chrome_learnings")
     logger.info("Starting daily chrome learnings run")
+
+    if registry.skip_if_disabled("daily_chrome_learnings", logger):
+        return 0
 
     try:
         start, end, day = prior_day()

@@ -49,7 +49,7 @@ def codex_sessions_dir() -> Path:
 
 CODEX_SESSIONS_DIR = codex_sessions_dir()
 
-DEFAULT_GEMINI_DIR = str(Path.home() / "Vaults" / "llm-wiki-learnings" / "gemini_inbox")
+DEFAULT_GEMINI_DIR = str(Path.home() / "Documents" / "ScribeJay" / "gemini_inbox")
 
 # Bound the per-session text handed to the small local model. ~12k chars keeps a
 # long session well inside the context window while preserving the goal (head)

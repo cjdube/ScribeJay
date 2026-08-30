@@ -75,6 +75,17 @@ def notify(
     `email_fallback` emails the message if the push fails, so an ntfy outage
     can't silently swallow an alert."""
     load_env()
+    # Imported here rather than at module scope: core/features.py reaches back
+    # into core/http.py, and notify is imported by core/logs.py, which almost
+    # everything imports.
+    from scribejay.core.features import enabled
+
+    if not enabled("notify"):
+        # Same reasoning as the unset URL below, one level up: a user who
+        # switched push off in settings has not suffered a delivery failure.
+        # Without this the toggle would be a lie whenever a URL is still set.
+        return {"error": "push alerts are switched off"}
+
     url = config.getenv("NTFY_URL")
     if not url:
         # Deliberately no fallback: an unset NTFY_URL means push is switched

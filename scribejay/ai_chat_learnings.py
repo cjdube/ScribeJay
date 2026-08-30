@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scribejay.core import config
+from scribejay.core import config, registry
 from scribejay.core.dates import local_timezone, prior_day
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
@@ -161,6 +161,9 @@ def main() -> int:
 
     logger = setup_logger("ai_chat_learnings")
     logger.info("Starting ai chat learnings run")
+
+    if registry.skip_if_disabled("ai_chat_learnings", logger):
+        return 0
 
     try:
         max_chars = int(config.getenv("AI_CHAT_LEARNINGS_MAX_CHARS", DEFAULT_MAX_CHARS))

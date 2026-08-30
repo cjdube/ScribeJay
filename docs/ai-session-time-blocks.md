@@ -57,11 +57,11 @@ stepped away — which is what makes gap-splitting the right primitive.
 
 ## The two knobs
 
-- `WREN_SESSION_BLOCK_GAP_MINUTES` (default **20**) — the idle gap that ends a
+- `SCRIBEJAY_SESSION_BLOCK_GAP_MINUTES` (default **20**) — the idle gap that ends a
   block. Tuned against six real days: 10 minutes fragments a working morning into a
   dozen entries (Aug 3 → 11 blocks), 30 swallows a coffee break and an errand alike,
   20 reproduces the days as they were lived (2–6 blocks, 1–5 hours).
-- `WREN_SESSION_BLOCK_MIN_MINUTES` (default **10**) — blocks shorter than this are
+- `SCRIBEJAY_SESSION_BLOCK_MIN_MINUTES` (default **10**) — blocks shorter than this are
   dropped; a 90-second glance at something is not a calendar entry. Measured against
   the block's *raw* span, before the rounding below, so the floor means what it says.
 

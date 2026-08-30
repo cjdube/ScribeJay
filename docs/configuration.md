@@ -105,6 +105,13 @@ new setting cannot be added without describing it.
 
 Adding a setting is one row plus one line in `config/.env.example`.
 
+## Feature toggles
+
+`SCRIBEJAY_FEATURE_<NAME>` says whether a source is used at all. Like
+`SCRIBEJAY_LLM_BACKEND` it carries **no default**, because "the user has not
+said" is a real third state: ScribeJay answers it by asking the machine whether
+that source is even set up. See [features.md](features.md).
+
 ## Migrating an existing install
 
 ```bash

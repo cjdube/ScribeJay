@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scribejay.core import config
+from scribejay.core import config, registry
 from scribejay.core.dates import local_timezone
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
@@ -124,6 +124,9 @@ def _apply_classification(events: list, classification: dict, logger) -> tuple[l
 def main() -> int:
     logger = setup_logger("calendar_colorizer")
     logger.info("Starting calendar colorizer run")
+
+    if registry.skip_if_disabled("calendar_colorizer", logger):
+        return 0
 
     try:
         start, end = _yesterday_range()

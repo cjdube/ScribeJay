@@ -262,3 +262,29 @@ def test_keychain_reads_still_degrade_quietly():
 
     assert secrets.get("SCRIBEJAY_CONFTEST_PROBE") is None
     assert secrets.is_set("SCRIBEJAY_CONFTEST_PROBE") is False
+
+
+# --------------------------------------------------------------------------- #
+# Features — the gate every task now runs through
+# --------------------------------------------------------------------------- #
+
+def test_every_feature_is_explicitly_enabled_for_the_suite():
+    # Without this, features.enabled() falls through to a probe of the machine
+    # — which under the redirects above answers "no" for everything, so every
+    # task's registry guard fires and hundreds of tests silently exercise a
+    # four-line skip instead of the task they name.
+    from scribejay.core import features
+
+    off = [n for n in features.NAMES if not features.enabled(n)]
+    assert not off, f"features not enabled for the suite: {off}"
+
+
+def test_the_feature_probe_is_not_what_the_suite_relies_on(monkeypatch):
+    # Explicitly ON, not "on because the developer's machine has it". The probe
+    # reads real paths (Chrome's history file, the Google client JSON), and
+    # depending on it would put the developer's machine back in the loop —
+    # exactly the coupling the settings redirects removed.
+    from scribejay.core import features
+
+    monkeypatch.setattr(features, "configured", lambda n: False)
+    assert all(features.enabled(n) for n in features.NAMES)

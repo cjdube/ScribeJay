@@ -5,7 +5,7 @@ otherwise drift apart:
 
 1. `scribejay/core/config.py` — resolves a value and supplies the default.
 2. `scribejay/migrate.py` — knows which keys are secrets and must go to the
-   Keychain rather than into `~/.scribejay/config.toml`.
+   Keychain rather than into `~/.scribejay/config.json`.
 3. The setup wizard (Phase 6) — asks the questions in `feature` order.
 4. The web settings screen (Phase 5) — renders a form from `label`, `help`,
    `type` and `choices`, and shows secrets as write-only fields.
@@ -15,10 +15,10 @@ reverse direction too: every literal key `config.getenv()` reads in the source
 tree has a row, so a new call site cannot quietly acquire an undocumented
 setting with an inline default.
 
-**Secrets never land in the TOML file.** A row with `secret=True` is resolved
+**Secrets never land in the settings file.** A row with `secret=True` is resolved
 through `scribejay/core/secrets.py` (the macOS Keychain) by
 `scribejay/core/http.py:resolve_key`, and the settings file holds no copy —
-which is what makes `~/.scribejay/config.toml` safe to back up or copy between
+which is what makes `~/.scribejay/config.json` safe to back up or copy between
 machines.
 
 `default` is stored as the string an environment variable would carry, not as
@@ -50,7 +50,7 @@ class Setting:
     """One configurable value.
 
     `key` is the environment-variable name and the identifier every consumer
-    uses. `section` and `name` are where it lives in `~/.scribejay/config.toml`
+    uses. `section` and `name` are where it lives in `~/.scribejay/config.json`
     — spelled out rather than derived from `key`, because the mechanical
     derivations all produce at least one ugly or ambiguous name
     (`SCRIBEJAY_LLM_BACKEND` would become `scribejay_llm_backend` under a
@@ -97,14 +97,14 @@ SETTINGS: tuple[Setting, ...] = (
              "Obsidian vault. ScribeJay will not create it: a missing folder "
              "means the path is wrong, and writing pages somewhere nobody "
              "reads is worse than failing.",
-        default=str(_HOME / "Vaults" / "llm-wiki-learnings" / "raw"),
+        default=str(_HOME / "Documents" / "ScribeJay"),
     ),
     Setting(
         key="CORRESPONDENCE_DIR", section="output", name="correspondence_dir", type="path",
         label="Correspondence folder",
         help="Where the daily sent-mail page is written. Kept out of the "
              "journal folder on purpose so it is not swept into an ingest queue.",
-        default=str(_HOME / "Vaults" / "llm-wiki-learnings" / "correspondence"),
+        default=str(_HOME / "Documents" / "ScribeJay" / "correspondence"),
     ),
     Setting(
         key="BRIEF_TO_EMAIL", section="output", name="fallback_email",
@@ -185,8 +185,9 @@ SETTINGS: tuple[Setting, ...] = (
         key="SCRIBEJAY_GEMINI_THINKING_BUDGET", section="model",
         name="gemini_thinking_budget", type="int",
         label="Gemini thinking budget (tokens)",
-        help="0 disables thinking. Thinking shares the output budget, so a "
-             "non-zero value here can empty a template-filling reply.",
+        help="Thinking shares the output budget, so a large value here can "
+             "empty a template-filling reply. 0 disables thinking; 128 is the "
+             "portable floor for a model that refuses to turn it off.",
         default="0",
     ),
     Setting(
@@ -262,7 +263,7 @@ SETTINGS: tuple[Setting, ...] = (
         label="Gemini chat drop folder",
         help="Gemini has no local transcript store, so exported chats are "
              "read from a folder you drop them into.",
-        default=str(_HOME / "Vaults" / "llm-wiki-learnings" / "gemini_inbox"),
+        default=str(_HOME / "Documents" / "ScribeJay" / "gemini_inbox"),
     ),
     Setting(
         key="AI_CHAT_LEARNINGS_MAX_CHARS", section="transcripts", name="max_chars",
@@ -272,11 +273,8 @@ SETTINGS: tuple[Setting, ...] = (
              "Bounds the prompt so a long day cannot overflow the context.",
         default="12000",
     ),
-    # Named WREN_* for now: renaming an env var is a behavior change for an
-    # existing install, so the rename to SCRIBEJAY_SESSION_BLOCK_* lands with
-    # the rest of Phase 3, alongside the migration that rewrites the setting.
     Setting(
-        key="WREN_SESSION_BLOCK_GAP_MINUTES", section="transcripts", name="block_gap_minutes",
+        key="SCRIBEJAY_SESSION_BLOCK_GAP_MINUTES", section="transcripts", name="block_gap_minutes",
         type="int", feature="transcripts",
         label="Session gap (minutes)",
         help="A pause longer than this splits one coding session into two "
@@ -284,14 +282,14 @@ SETTINGS: tuple[Setting, ...] = (
         default="20",
     ),
     Setting(
-        key="WREN_SESSION_BLOCK_MIN_MINUTES", section="transcripts", name="block_min_minutes",
+        key="SCRIBEJAY_SESSION_BLOCK_MIN_MINUTES", section="transcripts", name="block_min_minutes",
         type="int", feature="transcripts",
         label="Shortest session (minutes)",
         help="Sessions shorter than this are dropped rather than logged.",
         default="10",
     ),
     Setting(
-        key="WREN_SESSION_BLOCK_MAX_CHARS", section="transcripts", name="block_max_chars",
+        key="SCRIBEJAY_SESSION_BLOCK_MAX_CHARS", section="transcripts", name="block_max_chars",
         type="int", feature="transcripts",
         label="Session summary input cap (characters)",
         help="How much of a session is shown to the model when it writes the "
@@ -362,6 +360,78 @@ SETTINGS: tuple[Setting, ...] = (
         secret=True, feature="notify",
         label="ntfy access token", help="Only needed for a protected topic.",
     ),
+
+    # ---- feature toggles ----------------------------------------------------
+    # No defaults, on purpose. An unanswered toggle is not "off" — it means the
+    # user has not said, and scribejay/core/features.py answers by asking the
+    # machine whether the feature is even set up. That one rule serves a fresh
+    # install (nothing configured, everything quiet) and a long-running one
+    # (credentials present, nothing changes) without asking either of them a
+    # question. A default here would collapse "not said" into "no" and take
+    # that away.
+    Setting(
+        key="SCRIBEJAY_FEATURE_CHROME", section="features", name="chrome",
+        type="bool", feature="chrome", default=None,
+        label="Read Chrome browsing history",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
+    Setting(
+        key="SCRIBEJAY_FEATURE_TRANSCRIPTS", section="features", name="transcripts",
+        type="bool", feature="transcripts", default=None,
+        label="Read Claude Code, Codex and Gemini chat sessions",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
+    Setting(
+        key="SCRIBEJAY_FEATURE_GIT", section="features", name="git",
+        type="bool", feature="git", default=None,
+        label="Read commits from your projects folder",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
+    Setting(
+        key="SCRIBEJAY_FEATURE_GOOGLE_CALENDAR", section="features", name="google_calendar",
+        type="bool", feature="google", default=None,
+        label="Read and colour your Google Calendar",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
+    Setting(
+        key="SCRIBEJAY_FEATURE_GMAIL", section="features", name="gmail",
+        type="bool", feature="google", default=None,
+        label="Read who you sent mail to",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
+    Setting(
+        key="SCRIBEJAY_FEATURE_YOUTUBE", section="features", name="youtube",
+        type="bool", feature="google", default=None,
+        label="Read your YouTube Likes",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
+    Setting(
+        key="SCRIBEJAY_FEATURE_STRAVA", section="features", name="strava",
+        type="bool", feature="strava", default=None,
+        label="Log Strava activities onto the calendar",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
+    Setting(
+        key="SCRIBEJAY_FEATURE_CLICKUP", section="features", name="clickup",
+        type="bool", feature="clickup", default=None,
+        label="Include ClickUp tasks you closed",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
+    Setting(
+        key="SCRIBEJAY_FEATURE_NOTIFY", section="features", name="notify",
+        type="bool", feature="notify", default=None,
+        label="Push an alert when a run fails",
+        help="Leave unanswered to let ScribeJay decide from whether this is "
+             "set up. Answer to override that guess in either direction.",
+    ),
 )
 
 
@@ -399,7 +469,7 @@ def by_feature(feature: str) -> list[Setting]:
 
 
 def sections() -> list[str]:
-    """TOML table names in declaration order, de-duplicated."""
+    """Settings-file section names in declaration order, de-duplicated."""
     seen: list[str] = []
     for s in SETTINGS:
         if not s.secret and s.section not in seen:

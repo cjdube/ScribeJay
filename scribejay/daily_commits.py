@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scribejay.core import config
+from scribejay.core import config, features, registry
 from scribejay.core.dates import local_timezone, prior_day
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
@@ -93,6 +93,11 @@ def _closed_clickup(day, logger) -> list:
     """ClickUp Tasks closed on `day`, or [] on any failure. ClickUp being
     unreachable must cost the ClickUp section, never the day's entry — the same
     per-source guard every other gather in this repo uses."""
+    if not features.enabled("clickup"):
+        # Not a failure and not worth a warning. A user who never configured
+        # ClickUp would otherwise get "ClickUp closed Tasks unavailable" in
+        # every single daily_commits run, forever.
+        return []
     try:
         result = closed_tasks(day)
     except Exception as e:
@@ -182,6 +187,9 @@ def main() -> int:
 
     logger = setup_logger("daily_commits")
     logger.info("Starting daily commits run")
+
+    if registry.skip_if_disabled("daily_commits", logger):
+        return 0
 
     try:
         backend = scribejay_backend("daily_commits")

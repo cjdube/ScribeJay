@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scribejay.core import config
+from scribejay.core import config, registry
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.sinks.calendar import log_calendar_event
 from scribejay.sources.strava import fetch_strava
@@ -75,6 +75,9 @@ def _log_activity(activity: dict, logger) -> bool:
 def main() -> int:
     logger = setup_logger("strava_download")
     logger.info("Starting Strava download run")
+
+    if registry.skip_if_disabled("strava_download", logger):
+        return 0
 
     try:
         result = fetch_strava(date="yesterday")

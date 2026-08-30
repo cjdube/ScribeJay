@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scribejay.core import config
+from scribejay.core import config, registry
 from scribejay.core.dates import prior_day
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
@@ -57,6 +57,9 @@ def _looks_usable(text: str) -> bool:
 def main() -> int:
     logger = setup_logger("daily_youtube_learnings")
     logger.info("Starting daily youtube learnings run")
+
+    if registry.skip_if_disabled("daily_youtube_learnings", logger):
+        return 0
 
     try:
         start, end, day = prior_day()

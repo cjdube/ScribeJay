@@ -133,8 +133,12 @@ def test_secret_keys_cover_the_aliases():
 
 
 def test_by_feature_and_sections_stay_in_declaration_order():
+    # The feature toggle is last on purpose: the wizard and the settings screen
+    # both read this order, and "do you want Strava" reads better after the
+    # fields it governs than before them.
     strava = [s.key for s in schema.by_feature("strava")]
-    assert strava == ["STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_REFRESH_TOKEN"]
+    assert strava == ["STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET",
+                      "STRAVA_REFRESH_TOKEN", "SCRIBEJAY_FEATURE_STRAVA"]
     assert schema.sections()[0] == "core"
 
 
@@ -151,3 +155,36 @@ def test_config_can_resolve_every_row():
     for s in schema.SETTINGS:
         if not s.secret:
             config.getenv(s.key)
+
+
+def test_env_example_documents_every_key_and_agrees_on_defaults():
+    """`config/.env.example` is one of the four consumers the schema docstring
+    names, and the only one a human reads before anything runs. It drifts
+    silently: SESSION_BLOCK_MIN_MINUTES sat at 5 there while the code used 10,
+    so the file told users the wrong number for as long as it existed.
+    """
+    from pathlib import Path
+
+    text = (Path(schema.__file__).resolve().parent.parent.parent
+            / "config" / ".env.example").read_text()
+
+    documented = {}
+    for line in text.splitlines():
+        line = line.strip().lstrip("# ").split("#")[0].strip()
+        if "=" in line and not line.startswith("-"):
+            key, _, value = line.partition("=")
+            if key.strip().isupper():
+                documented[key.strip()] = value.strip()
+
+    missing = [s.key for s in schema.SETTINGS if s.key not in documented]
+    assert not missing, f"settings with no line in .env.example: {missing}"
+
+    # Only where the example states a value: a commented-out credential or an
+    # intentionally blank line documents the key without claiming a default.
+    disagree = {
+        s.key: (documented[s.key], s.default)
+        for s in schema.SETTINGS
+        if not s.secret and documented[s.key] and s.default
+        and documented[s.key].replace("~", str(Path.home())) != s.default
+    }
+    assert not disagree, f".env.example disagrees with the schema: {disagree}"

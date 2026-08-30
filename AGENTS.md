@@ -25,9 +25,13 @@ is no code dependency in either direction. See
 
 - `scribejay/core/` — the settings/model/logging/notify/store/http/dates/
   google seam every task reads through. `core/model.py` is the one choke
-  point for the single model call a task makes; `core/config.py` is the
-  settings seam (env vars plus `config/preferences.json`, gitignored,
-  falling back to the committed `config/preferences.example.json`).
+  point for the single model call a task makes. `core/config.py` is the
+  settings seam, resolving env var -> `~/.scribejay/config.json` -> the
+  default in `core/schema.py`, with secrets in the macOS Keychain via
+  `core/secrets.py` ([docs/configuration.md](docs/configuration.md)).
+  `core/features.py` says which sources the user wants and
+  `core/registry.py` maps tasks to the features they need
+  ([docs/features.md](docs/features.md)).
 - `scribejay/sources/` — read-only fetchers: `calendar`, `chrome`, `clickup`,
   `git`, `gmail_sent`, `strava`, `transcripts`, `youtube`.
 - `scribejay/sinks/` — write-only: `calendar` (log an event, recolor one),
@@ -110,7 +114,10 @@ The default backend is a small on-device model; design around it:
 
 - **New scheduled task**: `scribejay/<name>.py` with `main() -> int`,
   `setup_logger` and `notify_failure` from `scribejay/core/logs.py`, plus a
-  launchd plist (`local.scribejay.*`) in `launchd/`. **Log `Starting <name>
+  launchd plist (`local.scribejay.*`) in `launchd/`. Add a row to
+  `scribejay/core/registry.py` and call `registry.skip_if_disabled(...)`
+  immediately after the opening log line — **before any gather**, or a
+  declined source still gets read. **Log `Starting <name>
   run` on entry and `<name> run complete` on every success path** (and
   `logger.error` on the failure path — `notify_failure` doesn't log): a
   federating dashboard builds run history from those lines, never from exit
@@ -119,8 +126,11 @@ The default backend is a small on-device model; design around it:
 - **Persistence**: JSON stores under `config/` via `scribejay/core/store.py`
   (`locked`, `load_json`, `atomic_write_json`); prune on write so polling
   stores don't grow unbounded.
-- **Config**: `os.getenv()` / `config.getenv()` with inline defaults;
-  document every new variable in `config/.env.example`.
+- **Config**: read through `config.getenv()` — never `os.getenv` outside the
+  seam itself. Every key needs a row in `scribejay/core/schema.py`
+  (`tests/test_schema.py` walks the source and fails without one) and a line
+  in `config/.env.example`. A credential gets `secret=True` and lives in the
+  Keychain, never in a file.
 - **Tests**: one `tests/test_<module>.py` per module; monkeypatch all
   network/model/Google collaborators; no real network calls.
 - **Git**: commit straight to `main` — no feature branches.

@@ -56,6 +56,7 @@ os.environ["SCRIBEJAY_CONFIG_DIR"] = str(_TEST_CONFIG_DIR)
 os.environ["SCRIBEJAY_ENV_FILE"] = str(_TEST_CONFIG_DIR / "absent.env")
 
 from scribejay.core import config as _config  # noqa: E402
+from scribejay.core import features as _features  # noqa: E402
 from scribejay.core import logs as _logs  # noqa: E402
 from scribejay.core import secrets as _secrets  # noqa: E402
 from scribejay.core import notify as _notify  # noqa: E402
@@ -226,6 +227,25 @@ def _isolate_settings_file(tmp_path, monkeypatch):
     _config.reload()
     yield
     _config.STARTUP_WARNINGS.clear()
+
+
+@pytest.fixture(autouse=True)
+def _enable_every_feature(monkeypatch):
+    """Turn every feature explicitly on for the suite.
+
+    core/features.py answers an unanswered toggle by asking the machine whether
+    the feature is set up — and under the isolation above the answer is always
+    "no": there are no credentials, and PROJECTS_DIR and the transcript dirs
+    are empty tmp paths. So without this every task's registry guard fires and
+    485 tests exercise a four-line skip instead of the task.
+
+    Explicitly ON rather than left to the probe, because the probe reads the
+    developer's real machine for chrome and google — which is exactly the
+    coupling the Phase 2 redirects removed. tests/test_registry.py and
+    tests/test_features.py re-patch these per test to exercise the gate itself.
+    """
+    for name in _features.NAMES:
+        monkeypatch.setenv(_features.setting_key(name), "1")
 
 
 class _KeychainWrite(BaseException):

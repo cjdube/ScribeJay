@@ -21,7 +21,7 @@ from pathlib import Path
 
 from scribejay.core import config
 
-DEFAULT_CORRESPONDENCE_DIR = str(Path.home() / "Vaults" / "llm-wiki-learnings" / "correspondence")
+DEFAULT_CORRESPONDENCE_DIR = str(Path.home() / "Documents" / "ScribeJay" / "correspondence")
 
 # Subjects that are machinery rather than correspondence. Everything ScribeJay
 # sends itself is already caught by the self-addressed rule below; this list is

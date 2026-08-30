@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scribejay.core import config
+from scribejay.core import config, registry
 from scribejay.core.dates import local_timezone, prior_day
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
@@ -257,10 +257,13 @@ def main() -> int:
     logger = setup_logger("claude_time_blocks")
     logger.info("Starting AI Session Time Blocks run")
 
+    if registry.skip_if_disabled("claude_time_blocks", logger):
+        return 0
+
     try:
-        gap = int(config.getenv("WREN_SESSION_BLOCK_GAP_MINUTES", DEFAULT_GAP_MINUTES))
-        min_minutes = int(config.getenv("WREN_SESSION_BLOCK_MIN_MINUTES", DEFAULT_MIN_MINUTES))
-        max_chars = int(config.getenv("WREN_SESSION_BLOCK_MAX_CHARS", DEFAULT_MAX_CHARS))
+        gap = int(config.getenv("SCRIBEJAY_SESSION_BLOCK_GAP_MINUTES", DEFAULT_GAP_MINUTES))
+        min_minutes = int(config.getenv("SCRIBEJAY_SESSION_BLOCK_MIN_MINUTES", DEFAULT_MIN_MINUTES))
+        max_chars = int(config.getenv("SCRIBEJAY_SESSION_BLOCK_MAX_CHARS", DEFAULT_MAX_CHARS))
         backend = scribejay_backend("claude_time_blocks")
         log_backend(logger, "claude_time_blocks", backend)
 

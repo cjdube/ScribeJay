@@ -72,6 +72,18 @@ are the `persona`, `calendar`, and `learnings` sections of the same file. See
 .venv/bin/python -m scribejay.migrate
 ```
 
+## Optional sources
+
+You will not want all eight sources. Decline one and the job that needs it
+stops running **and** stops alerting — no more "fetch_strava failed" at 5:50
+every morning for an account you never had.
+
+You do not have to decide up front. A source with no credentials is off and
+silent; one with credentials is on. Override the guess per source with
+`SCRIBEJAY_FEATURE_<NAME>`. See [docs/features.md](docs/features.md).
+
+Tier 0 — browsing, AI sessions, and commits — needs no accounts at all.
+
 Run the test suite:
 
 ```bash
@@ -108,6 +120,7 @@ lands.
   layout, and the split's history
 - [docs/configuration.md](docs/configuration.md) — settings, the resolution
   layers, and the Keychain
+- [docs/features.md](docs/features.md) — turning sources on and off
 - [docs/preferences.md](docs/preferences.md) — the `persona`, `calendar`, and
   `learnings` sections
 - [docs/llm-backend.md](docs/llm-backend.md) — local vs. cloud model selection

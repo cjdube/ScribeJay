@@ -50,6 +50,16 @@ def retired_env_path() -> Path:
     return env_path().with_name(env_path().name + ".migrated")
 
 
+# Keys that changed name after this tool shipped. Without these an old .env's
+# entry would be reported as unknown and the user would silently lose a tuned
+# value — the exact failure a rename is supposed to be invisible against.
+RENAMED = {
+    "WREN_SESSION_BLOCK_GAP_MINUTES": "SCRIBEJAY_SESSION_BLOCK_GAP_MINUTES",
+    "WREN_SESSION_BLOCK_MIN_MINUTES": "SCRIBEJAY_SESSION_BLOCK_MIN_MINUTES",
+    "WREN_SESSION_BLOCK_MAX_CHARS": "SCRIBEJAY_SESSION_BLOCK_MAX_CHARS",
+}
+
+
 def _classify(values: dict) -> tuple[list, list, list, list]:
     """Sort .env entries into (settings, secrets, per-task backends, unknown).
 
@@ -59,6 +69,7 @@ def _classify(values: dict) -> tuple[list, list, list, list]:
     for key, value in values.items():
         if not value:
             continue
+        key = RENAMED.get(key, key)
         if schema.is_secret(key):
             creds.append((key, value))
         elif schema.get(key) is not None:
