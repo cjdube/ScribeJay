@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.scribejay.selfheal</string>
+
+    <!-- NOT __SCRIBEJAY_ROOT__/.venv/bin/python, unlike every other plist here.
+         This job repairs the case where launchd refuses to exec that
+         interpreter after a brew upgrade replaced it; running the repair
+         through the broken interpreter would kill the healer with the exact
+         fault it exists to fix. /bin/bash is Apple-signed and is not
+         replaced by Homebrew, so this job still starts when nothing else
+         will. Keep it that way. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__SCRIBEJAY_ROOT__/launchd/reload-after-upgrade.sh</string>
+        <string>--quiet</string>
+    </array>
+
+    <!-- Hourly, not daily-before-the-first-job: an upgrade lands whenever the
+         user runs brew, and the healer only helps if it runs between the
+         upgrade and the next scheduled fire. The check is a launchctl query
+         per agent, so it costs nothing to repeat.
+
+         Wren runs its own copy of this on its own agents. Two healers, one per
+         checkout, because staleness is judged against each repo's own
+         interpreter: a shared healer would have to know both, and would break
+         the rule that nothing under Wren imports or reaches into ScribeJay. -->
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <!-- The quiet flag above writes nothing unless it actually repairs
+         something, so this file stays a list of real incidents rather than 24
+         lines a day of "nothing stale".
+         Note: no doubled hyphen may appear inside an XML comment. launchd
+         accepts it; the dashboard's plist parser cannot, and drops the job. -->
+    <key>StandardOutPath</key>
+    <string>__SCRIBEJAY_ROOT__/logs/selfheal.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>__SCRIBEJAY_ROOT__/logs/selfheal.launchd.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

@@ -1,0 +1,240 @@
+"""Tests for the ntfy push helper. requests.post is monkeypatched, so no
+network runs — the tests exercise the missing-config guard, header/body
+assembly, the never-raise error contract, and the email fallback.
+
+Mirrors LocalLLMAgent's tests/test_notify.py minus ntfy_health and the
+push_log bookkeeping — neither exists here (see scribejay/core/notify.py's
+module docstring: ScribeJay has no dashboard page for them to feed)."""
+
+import requests
+
+from scribejay.core import notify as notify_mod
+from scribejay.core.notify import notify
+from scribejay.sinks import email as email_mod
+
+
+class _FakeResp:
+    def __init__(self, status=200):
+        self.status_code = status
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError(f"HTTP {self.status_code}", response=self)
+
+
+def _capture_post(monkeypatch, resp=None, raises=None):
+    """Wire requests.post to capture its call and return resp (or raise).
+    Also no-op load_env so a real config/.env can't override the test's env."""
+    monkeypatch.setattr(notify_mod, "load_env", lambda: None)
+    captured = {}
+
+    def fake_post(url, data=None, headers=None, timeout=None):
+        captured.update(url=url, data=data, headers=headers, timeout=timeout)
+        if raises is not None:
+            raise raises
+        return resp or _FakeResp()
+
+    monkeypatch.setattr(notify_mod.requests, "post", fake_post)
+    return captured
+
+
+def test_missing_url_returns_error_without_posting(monkeypatch):
+    monkeypatch.setattr(notify_mod, "load_env", lambda: None)
+    monkeypatch.delenv("NTFY_URL", raising=False)
+    # A stub that would blow up if called, proving we never reach the network.
+    monkeypatch.setattr(notify_mod.requests, "post", lambda *a, **k: 1 / 0)
+    result = notify("anything")
+    assert "error" in result and "NTFY_URL" in result["error"]
+
+
+def test_posts_body_and_auth_header(monkeypatch):
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    monkeypatch.setenv("NTFY_TOKEN", "tk_secret")
+    captured = _capture_post(monkeypatch)
+
+    result = notify("brief failed", title="ScribeJay", priority="high")
+
+    assert result == {"ok": True}
+    assert captured["url"] == "http://box.ts.net:2586/scribejay-alerts"
+    assert captured["data"] == b"brief failed"
+    assert captured["headers"]["Authorization"] == "Bearer tk_secret"
+    assert captured["headers"]["Title"] == "ScribeJay"
+    assert captured["headers"]["Priority"] == "high"
+
+
+# --------------------------------------------------------------------------- #
+# Titles that came from outside
+# --------------------------------------------------------------------------- #
+#
+# A sender chooses the subject that ends up in the title. An HTTP header value
+# is encoded latin-1 by http.client, so an emoji there raised
+# UnicodeEncodeError and aborted the whole POST — the alert was lost, not just
+# its emoji. These assert the encodability directly rather than just comparing
+# strings: requests is stubbed out here, so a captured header that "looks
+# right" proves nothing about what the real socket would accept.
+
+def test_an_emoji_in_the_title_does_not_lose_the_push(monkeypatch):
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    captured = _capture_post(monkeypatch)
+
+    result = notify("a run failed.", title="Mail: \U0001F389 Order shipped")
+
+    assert result == {"ok": True}
+    title = captured["headers"]["Title"]
+    title.encode("latin-1")  # what http.client does; raised before the fix
+    assert title == "Mail: Order shipped"
+    # The body is sent as UTF-8 bytes, so it was never subject to this.
+    assert captured["data"] == "a run failed.".encode("utf-8")
+
+
+def test_accented_letters_in_a_title_survive_intact(monkeypatch):
+    """latin-1, not ASCII, so real names and subjects are not mangled."""
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    captured = _capture_post(monkeypatch)
+
+    notify("hi", title="Mail: Café réservé")
+
+    assert captured["headers"]["Title"] == "Mail: Café réservé"
+    captured["headers"]["Title"].encode("latin-1")
+
+
+def test_a_title_with_nothing_encodable_is_dropped_rather_than_sent_blank(monkeypatch):
+    """An all-emoji or all-CJK subject reduces to nothing. A blank Title header
+    is worse than none — ntfy shows the topic name in its place."""
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    captured = _capture_post(monkeypatch)
+
+    result = notify("a run failed.", title="\U0001F389\U0001F389")
+
+    assert result == {"ok": True}
+    assert "Title" not in captured["headers"]
+
+
+def test_omits_auth_header_when_no_token(monkeypatch):
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    monkeypatch.delenv("NTFY_TOKEN", raising=False)
+    captured = _capture_post(monkeypatch)
+
+    assert notify("hi") == {"ok": True}
+    assert "Authorization" not in captured["headers"]
+
+
+def test_http_error_becomes_error_dict(monkeypatch):
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    _capture_post(monkeypatch, resp=_FakeResp(status=403))
+    result = notify("hi")
+    assert "error" in result and "403" in result["error"]
+
+
+def test_network_exception_never_raises(monkeypatch):
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    _capture_post(monkeypatch, raises=requests.exceptions.ConnectionError("refused"))
+    result = notify("hi")
+    assert "error" in result
+
+
+def test_actions_publish_as_json_to_base_url(monkeypatch):
+    # With action buttons, notify() must JSON-publish to the server BASE url
+    # (with a "topic" field), not POST plaintext to the topic url.
+    monkeypatch.setattr(notify_mod, "load_env", lambda: None)
+    monkeypatch.setenv("NTFY_URL", "http://box:2586/scribejay-alerts")
+    monkeypatch.setenv("NTFY_TOKEN", "tk_x")
+    captured = {}
+
+    def fake_post(url, data=None, json=None, headers=None, timeout=None):
+        captured.update(url=url, data=data, json=json, headers=headers)
+        return _FakeResp()
+
+    monkeypatch.setattr(notify_mod.requests, "post", fake_post)
+    actions = [{"action": "http", "label": "Approve", "url": "https://h/x"}]
+
+    result = notify("do it?", title="T", priority="high", actions=actions)
+
+    assert result == {"ok": True}
+    assert captured["url"] == "http://box:2586"           # base, not topic
+    assert captured["data"] is None                       # JSON body, not plaintext
+    assert captured["json"]["topic"] == "scribejay-alerts"
+    assert captured["json"]["actions"] == actions
+    assert captured["json"]["priority"] == 4              # "high" -> int
+    assert captured["headers"]["Authorization"] == "Bearer tk_x"
+
+
+# --------------------------------------------------------------------------- #
+# email fallback — so a dead push channel can't silently swallow an alert
+# --------------------------------------------------------------------------- #
+
+def _capture_email(monkeypatch):
+    """Capture the fallback's send_email. _fallback_email imports it inside the
+    function, so patching the email module is what that call resolves — and it
+    overrides conftest's suite-wide _block_email_send guard for these tests."""
+    sent = []
+
+    def fake_send(subject, body):
+        sent.append({"subject": subject, "body": body})
+        return {"message_id": "m1"}
+
+    monkeypatch.setattr(email_mod, "send_email", fake_send)
+    return sent
+
+
+def test_failed_push_falls_back_to_email(monkeypatch):
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    _capture_post(monkeypatch, raises=requests.exceptions.ConnectionError("refused"))
+    sent = _capture_email(monkeypatch)
+
+    result = notify("brief failed", title="ScribeJay", email_fallback=True)
+
+    assert "error" in result                      # still reports the push failure
+    assert result["email_fallback"] == {"message_id": "m1"}
+    assert len(sent) == 1
+    assert "brief failed" in sent[0]["body"]
+    assert "push failed" in sent[0]["subject"]
+    assert "refused" in sent[0]["body"]           # why it didn't land
+
+
+def test_fallback_is_off_by_default(monkeypatch):
+    """A repeatedly-retried push with a default-on fallback would email far
+    too often during any real outage."""
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    _capture_post(monkeypatch, raises=requests.exceptions.ConnectionError("refused"))
+    sent = _capture_email(monkeypatch)
+
+    result = notify("a reminder")
+
+    assert "error" in result
+    assert sent == []
+    assert "email_fallback" not in result
+
+
+def test_successful_push_never_emails(monkeypatch):
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    _capture_post(monkeypatch)
+    sent = _capture_email(monkeypatch)
+
+    assert notify("hi", email_fallback=True) == {"ok": True}
+    assert sent == []
+
+
+def test_unset_url_does_not_email(monkeypatch):
+    """An unset NTFY_URL means push is switched off on purpose, not broken."""
+    monkeypatch.setattr(notify_mod, "load_env", lambda: None)
+    monkeypatch.delenv("NTFY_URL", raising=False)
+    sent = _capture_email(monkeypatch)
+
+    result = notify("hi", email_fallback=True)
+
+    assert "error" in result
+    assert sent == []
+
+
+def test_email_failure_never_raises(monkeypatch):
+    """The fallback must not mask the push failure it's reporting."""
+    monkeypatch.setenv("NTFY_URL", "http://box.ts.net:2586/scribejay-alerts")
+    _capture_post(monkeypatch, raises=requests.exceptions.ConnectionError("refused"))
+    monkeypatch.setattr(email_mod, "send_email",
+                        lambda **k: (_ for _ in ()).throw(RuntimeError("gmail down")))
+
+    result = notify("hi", title="T", email_fallback=True)
+
+    assert "error" in result                                  # the original failure survives
+    assert "gmail down" in result["email_fallback"]["error"]

@@ -1,0 +1,20 @@
+# What we import directly, and why each version is held. This file states
+# intent; it is NOT what you install from once a requirements.lock exists —
+# that pins everything underneath these too. See LocalLLMAgent's
+# requirements.txt for the rebuild-drift rationale these pins share.
+requests==2.34.2
+python-dotenv==1.2.2
+google-api-python-client==2.198.0
+google-auth-httplib2==0.4.0
+google-auth-oauthlib==1.4.0
+# httplib2: core/google.py's timeout-bearing transport, also pulled in by the
+# Google client libs — pinned directly rather than left to float transitively.
+httplib2==0.32.0
+
+# Optional cloud backend (SCRIBEJAY_LLM_BACKEND=gemini). Imported lazily, only
+# when that backend is selected, so a purely local (Ollama) install never
+# loads it.
+google-genai==2.11.0
+
+# Dev/test only.
+pytest==9.1.1
