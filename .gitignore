@@ -16,3 +16,6 @@ logs/*.log.bak
 .claude/
 .codex/
 scratchpad
+# Working plans and audits. They quote real paths, real accounts, and work not
+# done yet, so they stay on disk and out of the history.
+docs/reviews/
