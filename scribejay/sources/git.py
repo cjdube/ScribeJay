@@ -58,22 +58,30 @@ def _projects_dir() -> Path:
     return Path(config.getenv("PROJECTS_DIR", DEFAULT_PROJECTS_DIR)).expanduser()
 
 
-def _git(path: Path, *args: str) -> str | None:
-    """`git -C path <args>` stdout — or None if git isn't there, the directory
-    isn't a repo, the command fails, or it times out. Never raises: several of the
-    user's checkouts have no git at all, so "not a repo" is an ordinary outcome.
-    Deliberately does NOT strip: `git log` output is parsed by separator, and a
-    trailing newline is part of the last file path's line."""
+def _git(path: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run `git -C path <args>` without raising and preserve failure details.
+
+    stdout is deliberately not stripped: `git log` output is parsed by separator,
+    and a trailing newline is part of the last file path's line."""
+    command = ["git", "-C", str(path), *args]
     try:
-        proc = subprocess.run(
-            ["git", "-C", str(path), *args],
+        return subprocess.run(
+            command,
             capture_output=True, text=True, timeout=GIT_TIMEOUT,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            command, 124, "", f"timed out after {GIT_TIMEOUT} seconds",
+        )
+    except OSError as e:
+        return subprocess.CompletedProcess(command, 127, "", str(e))
+
+
+def _failure_detail(proc: subprocess.CompletedProcess) -> str:
+    """A concise, single-line explanation suitable for an unattended-run log."""
+    lines = (proc.stderr or "").strip().splitlines()
+    detail = lines[0] if lines else "no error output"
+    return f"exit {proc.returncode}: {detail[:300]}"
 
 
 def author() -> str | None:
@@ -201,25 +209,54 @@ def collect_commits(start, end, logger=None) -> dict:
             "user.email) — counting EVERY author's commits as the user's"
         )
 
-    args = [
-        # HEAD and the remote-tracking branches: a commit pushed from another
-        # machine is on origin/<branch> after fetch_repos() and on no local branch
-        # at all. git log de-duplicates, so a commit on both is counted once.
-        "log", "--no-merges", "HEAD", "--remotes",
-        f"--since={start.isoformat()}", f"--until={end.isoformat()}",
-        f"--pretty=format:{_REC}%h{_FIELD}%aI{_FIELD}%s", "--numstat",
-    ]
-    if who:
-        args.insert(1, f"--author={who}")
-
     commits: list[dict] = []
     for repo in repos:
-        output = _git(repo, *args)
-        if output is None:
+        # A newly initialised repo has a .git directory but no HEAD until its first
+        # commit. That is an ordinary empty source, not a failed git log.
+        head = _git(repo, "rev-parse", "--verify", "--quiet", "HEAD")
+        if head.returncode not in (0, 1):
             if logger:
-                logger.warning(f"git log failed in {repo.name}; skipping it")
+                logger.warning(
+                    f"git HEAD check failed in {repo.name} ({_failure_detail(head)}); skipping it"
+                )
             continue
-        commits.extend(_parse_log(output, repo.name))
+
+        revisions = ["HEAD", "--remotes"] if head.returncode == 0 else ["--remotes"]
+        if head.returncode == 1:
+            remotes = _git(
+                repo, "for-each-ref", "--count=1", "--format=%(refname)", "refs/remotes",
+            )
+            if remotes.returncode != 0:
+                if logger:
+                    logger.warning(
+                        f"git remote check failed in {repo.name} "
+                        f"({_failure_detail(remotes)}); skipping it"
+                    )
+                continue
+            if not remotes.stdout.strip():
+                if logger:
+                    logger.info(f"{repo.name} has no commits yet; nothing to scan")
+                continue
+
+        args = [
+            # HEAD and the remote-tracking branches: a commit pushed from another
+            # machine is on origin/<branch> after fetch_repos() and on no local
+            # branch at all. git log de-duplicates commits reachable from both.
+            "log", "--no-merges", *revisions,
+            f"--since={start.isoformat()}", f"--until={end.isoformat()}",
+            f"--pretty=format:{_REC}%h{_FIELD}%aI{_FIELD}%s", "--numstat",
+        ]
+        if who:
+            args.insert(1, f"--author={who}")
+
+        log = _git(repo, *args)
+        if log.returncode != 0:
+            if logger:
+                logger.warning(
+                    f"git log failed in {repo.name} ({_failure_detail(log)}); skipping it"
+                )
+            continue
+        commits.extend(_parse_log(log.stdout, repo.name))
 
     commits.sort(key=lambda c: c["time"], reverse=True)
     counts: dict[str, int] = {}
@@ -252,8 +289,8 @@ def compact_commits(commits: list, logger=None) -> list:
             logger.warning(f"capped commits at {MAX_COMMITS} of {len(commits)}; "
                            "the oldest of the day are not in the prompt")
         if trimmed_files:
-            logger.warning(f"trimmed the file list on {trimmed_files} commit(s) to "
-                           f"{MAX_FILES_PER_COMMIT} paths")
+            logger.info(f"trimmed the file list on {trimmed_files} commit(s) to "
+                        f"{MAX_FILES_PER_COMMIT} paths")
     return rows
 
 

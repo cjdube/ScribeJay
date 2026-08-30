@@ -219,6 +219,13 @@ def test_a_run_fetches_before_it_reads(stubbed_run, monkeypatch):
     assert order == ["fetch", "collect"]
 
 
+def test_fetch_summary_does_not_claim_every_repo_is_up_to_date(stubbed_run, capsys):
+    assert dc.main() == 0
+    output = capsys.readouterr().out
+    assert "git fetch completed: 12 without errors, 0 failed" in output
+    assert "repos up to date" not in output
+
+
 def test_backfill_fetches_once_not_per_day(stubbed_run, monkeypatch):
     # A fortnight backfill needs the objects on disk one time. Fetching per day
     # would be fourteen round trips to every remote for identical results.

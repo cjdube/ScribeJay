@@ -68,7 +68,11 @@ def test_parse_log_of_an_empty_day_is_no_rows():
 
 class _Recorder:
     def __init__(self):
+        self.infos = []
         self.warnings = []
+
+    def info(self, msg):
+        self.infos.append(msg)
 
     def warning(self, msg):
         self.warnings.append(msg)
@@ -92,21 +96,25 @@ def test_compact_caps_the_commit_count():
     assert len(rows) == ga.MAX_COMMITS
 
 
-@pytest.mark.parametrize("commits,expect", [
-    ([_commit(n) for n in range(ga.MAX_COMMITS + 5)], "capped commits"),
-    ([_commit(1, files=40)], "trimmed the file list"),
-])
-def test_every_cap_that_drops_something_logs_it(commits, expect):
+def test_dropping_whole_commits_logs_a_warning():
     # AGENTS.md: degrading on volume is only safe if it is logged. A silently
     # shortened prompt produces a thinner page that nothing alerts on.
     logger = _Recorder()
-    ga.compact_commits(commits, logger=logger)
-    assert any(expect in w for w in logger.warnings), logger.warnings
+    ga.compact_commits([_commit(n) for n in range(ga.MAX_COMMITS + 5)], logger=logger)
+    assert any("capped commits" in w for w in logger.warnings), logger.warnings
+
+
+def test_trimming_only_file_details_logs_info_not_warning():
+    logger = _Recorder()
+    ga.compact_commits([_commit(1, files=40)], logger=logger)
+    assert any("trimmed the file list" in msg for msg in logger.infos), logger.infos
+    assert logger.warnings == []
 
 
 def test_compaction_is_silent_when_nothing_is_dropped():
     logger = _Recorder()
     ga.compact_commits([_commit(1, files=2)], logger=logger)
+    assert logger.infos == []
     assert logger.warnings == []
 
 
@@ -271,18 +279,51 @@ def test_collect_on_an_empty_projects_dir_is_an_ordinary_empty_day(projects):
     assert out == {"commits": [], "repos": {}, "total_commits": 0, "repos_scanned": 0}
 
 
+def test_collect_on_a_repo_without_its_first_commit_is_an_ordinary_empty_day(projects):
+    _repo(projects, "new-project")
+    logger = _Recorder()
+
+    out = ga.collect_commits(YESTERDAY, YESTERDAY_END, logger=logger)
+
+    assert out == {"commits": [], "repos": {}, "total_commits": 0, "repos_scanned": 1}
+    assert any("new-project has no commits yet" in msg for msg in logger.infos), logger.infos
+    assert logger.warnings == []
+
+
+def test_an_unborn_head_still_reads_commits_fetched_from_a_remote(projects, tmp_path):
+    bare = _bare(tmp_path / "origin.git")
+    laptop = _repo(tmp_path, "laptop")
+    _commit_at(laptop, "remote.py", "x\n", "2026-08-25T10:00:00-04:00")
+    _run("git", "remote", "add", "origin", str(bare), cwd=laptop)
+    _run("git", "push", "-q", "origin", "main", cwd=laptop)
+
+    local = _repo(projects, "new-project")
+    _run("git", "remote", "add", "origin", str(bare), cwd=local)
+    assert ga.fetch_repos() == {"repos": 1, "failed": 0}
+
+    out = ga.collect_commits(YESTERDAY, YESTERDAY_END)
+    assert [c["subject"] for c in out["commits"]] == ["add remote.py"]
+
+
 def test_a_broken_checkout_is_skipped_and_logged_not_raised(projects, monkeypatch):
     good = _repo(projects, "alpha")
     _commit_at(good, "a.py", "x\n", "2026-08-25T10:00:00-04:00")
-    _repo(projects, "broken")
+    broken = _repo(projects, "broken")
+    _commit_at(broken, "b.py", "x\n", "2026-08-25T11:00:00-04:00")
 
     real_git = ga._git
-    monkeypatch.setattr(ga, "_git",
-                        lambda path, *args: None if path.name == "broken" else real_git(path, *args))
+
+    def broken_git(path, *args):
+        if path.name == "broken" and args[0] == "log":
+            return subprocess.CompletedProcess(args, 128, "", "fatal: fixture failure\n")
+        return real_git(path, *args)
+
+    monkeypatch.setattr(ga, "_git", broken_git)
     logger = _Recorder()
     out = ga.collect_commits(YESTERDAY, YESTERDAY_END, logger=logger)
     assert out["total_commits"] == 1
-    assert any("broken" in w for w in logger.warnings), logger.warnings
+    assert any("broken" in w and "exit 128" in w and "fatal: fixture failure" in w
+               for w in logger.warnings), logger.warnings
 
 
 def test_no_resolvable_author_warns_that_everyone_counts(projects, monkeypatch):

@@ -191,8 +191,8 @@ def main() -> int:
         # is a fortnight backfill. Work done on another machine only reaches this
         # disk here; without it a day spent elsewhere reads as a quiet day.
         fetch = fetch_repos(logger=logger)
-        logger.info(f"git fetch: {fetch['repos'] - fetch['failed']} of "
-                    f"{fetch['repos']} repos up to date")
+        logger.info(f"git fetch completed: {fetch['repos'] - fetch['failed']} "
+                    f"without errors, {fetch['failed']} failed")
 
         # Warmed on the first day that actually has commits, not up front: a
         # backfill over a quiet fortnight would otherwise load the model to do
