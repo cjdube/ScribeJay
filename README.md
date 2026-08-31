@@ -17,8 +17,11 @@ Nothing is sent to a cloud model by default.
 macOS only. The schedule is launchd and the credential store is the macOS
 Keychain, so there is no useful Linux build to offer yet.
 
+Not yet on PyPI. Clone the repo, then install from the local checkout:
+
 ```bash
-uv tool install scribejay
+git clone https://github.com/cjdube/ScribeJay
+uv tool install ./ScribeJay
 scribejay init
 ```
 
