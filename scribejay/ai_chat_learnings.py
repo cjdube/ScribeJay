@@ -39,8 +39,24 @@ from scribejay.sources.transcripts import (
     fetch_gemini_chats,
 )
 
-# Gemini dedup lives here so a re-run never re-summarizes the same drop file.
-STATE_PATH = Path(__file__).resolve().parent.parent / "config" / "ai_chat_learnings_state.json"
+# Gemini dedup: the watermark that stops a re-run re-summarizing a drop file.
+_STATE_FILENAME = "ai_chat_learnings_state.json"
+_LEGACY_STATE_PATH = Path(__file__).resolve().parent.parent / "config" / _STATE_FILENAME
+
+
+def _resolve_state_path(legacy: Path) -> Path:
+    """Where the dedup store lives, on the same rule as config.resolve_path().
+
+    A pre-packaging checkout has the file beside the repo and keeps using it —
+    moving the watermark would re-summarize everything it had already recorded.
+    Anything else gets ~/.scribejay, because installed as a tool the source
+    tree is site-packages: not a place anything may write, and replaced whole
+    by the next reinstall. A store lost that way fails silently, since a
+    duplicate summary looks exactly like a new one."""
+    return legacy if legacy.exists() else config.config_dir() / _STATE_FILENAME
+
+
+STATE_PATH = _resolve_state_path(_LEGACY_STATE_PATH)
 
 SESSION_SYSTEM_PROMPT = f"""You are {config.user_name()}'s assistant. You are given ONE past chat \
 session {config.user_name()} had with an AI agent. Summarize it into a brief, skimmable log entry — \

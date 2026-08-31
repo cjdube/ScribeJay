@@ -5,9 +5,11 @@ no model, transcript, vault, or Gmail access."""
 
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
+from scribejay.core import config
 from scribejay.core.store import load_json
 from scribejay import ai_chat_learnings as ai
 
@@ -127,3 +129,34 @@ def test_failure_is_a_failed_run(stubbed, monkeypatch):
                         lambda name, detail, logger=None: calls.append(str(detail)))
     assert ai.main() == 1
     assert any("boom" in c for c in calls)
+
+
+def test_state_path_is_never_inside_the_source_tree():
+    """Installed with `uv tool install`, `scribejay/..` is site-packages: not a
+    place anything may write, and replaced wholesale by the next reinstall. A
+    store that landed there would lose the Gemini watermark on every upgrade
+    and re-summarize every drop file already summarized — silently, because a
+    duplicate summary looks exactly like a new one."""
+    source_tree = Path(ai.__file__).resolve().parent.parent
+    resolved = Path(ai.STATE_PATH).resolve()
+    assert source_tree not in resolved.parents, (
+        f"{resolved} is inside the source tree at {source_tree} — a reinstall "
+        "would wipe the Gemini dedup watermark"
+    )
+
+
+def test_state_path_falls_back_to_the_config_dir(tmp_path):
+    """No legacy file: the store belongs in ~/.scribejay (SCRIBEJAY_CONFIG_DIR
+    here, which is what the suite pins it to)."""
+    missing = tmp_path / "config" / "ai_chat_learnings_state.json"
+    assert ai._resolve_state_path(missing) == config.config_dir() / missing.name
+
+
+def test_state_path_keeps_a_legacy_checkout_store_where_it_is(tmp_path):
+    """An install predating packaging has the file beside the repo. It must keep
+    being used: moving the watermark re-summarizes everything already recorded,
+    which is the same failure the test above prevents, from the other side."""
+    legacy = tmp_path / "config" / "ai_chat_learnings_state.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text("{}")
+    assert ai._resolve_state_path(legacy) == legacy
