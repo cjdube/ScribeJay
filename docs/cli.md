@@ -178,6 +178,14 @@ header from `scribejay/core/features.py`, so the form cannot drift out of step
 with what the code actually reads. Each source has a **Test** button that calls
 the real fetcher and reports the row count or the error.
 
+Groups are a tab rail down the left, one colour each, and one panel is shown at
+a time. The tabs are hidden radio buttons and CSS — no JavaScript switches
+them, so the page still works with scripting off, and arrow keys move between
+them. It is still **one form and one Save**: every panel is in the page whether
+or not you are looking at it, and nothing is written unless every field on
+every tab validates. If a save is rejected, the page reopens on the tab that
+holds the rejected field and marks it.
+
 **Credentials are write-only.** A secret field shows `set` or `not set`, never
 the value. Leaving it blank means "leave it alone" — it cannot mean "clear it",
 because the field renders blank on every visit and clearing on blank would

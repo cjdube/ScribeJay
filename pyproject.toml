@@ -54,10 +54,11 @@ scribejay = "scribejay.cli:main"
 [tool.setuptools.packages.find]
 include = ["scribejay*"]
 
-# persona.md is read at runtime by the tasks that write prose, so it has to
-# travel inside the wheel rather than sitting beside a checkout.
+# persona.md is read at runtime by the tasks that write prose, and the mark in
+# assets/ is inlined into the settings page, so both have to travel inside the
+# wheel rather than sitting beside a checkout.
 [tool.setuptools.package-data]
-scribejay = ["persona.md"]
+scribejay = ["persona.md", "assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

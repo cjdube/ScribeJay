@@ -46,6 +46,11 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   (the sent-mail noise filter and page builder), `journal.py` (deterministic
   Markdown sections), `migrate.py` (the one reader of a legacy `config/.env`
   or `preferences.json`) and `status.py`.
+- `scribejay/assets/` — the mark, in SVG and three PNG sizes. The SVG is
+  read by `cli/settings_form.py:load_logo()` and inlined into the settings
+  page, so it ships in the wheel via `package-data` in `pyproject.toml`
+  rather than sitting beside a checkout — the same reason `persona.md`
+  does. A missing file renders no logo; it never fails a page.
 - `scribejay/cli/` — the `scribejay` console command
   ([docs/cli.md](docs/cli.md)). `cli/schedule.py` generates the launchd plists
   from `core/registry.py`; `cli/settings_server.py` and `cli/settings_form.py`

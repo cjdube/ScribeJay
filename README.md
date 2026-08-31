@@ -1,3 +1,5 @@
+<img src="scribejay/assets/scribejay.svg" alt="" width="72" height="72">
+
 # ScribeJay
 
 ScribeJay keeps the record of what actually happened.

@@ -52,12 +52,28 @@ class Group:
     without ScribeJay recolouring their work calendar.
     """
 
-    def __init__(self, name: str, label: str, rows: list[schema.Setting]):
+    def __init__(self, name: str, label: str, rows: list[schema.Setting],
+                 slug: str):
         self.name = name
         self.label = label
+        # `name` is not unique — core yields three groups — so the tab rail,
+        # the panel it reveals, and the accent all key off `slug` instead.
+        self.slug = slug
+        self.accent = ACCENTS.get(slug, DEFAULT_ACCENT)
         self.settings = [s for s in rows if not s.key.startswith("SCRIBEJAY_FEATURE_")]
         self.toggles = [s for s in rows if s.key.startswith("SCRIBEJAY_FEATURE_")]
         self.features = [f for f in features.FEATURES if f.settings_group == name]
+
+    def owns_error(self, errors) -> bool:
+        """Does one of this group's fields explain one of these errors?
+
+        Matched on the label rather than the key because that is what the
+        message carries — `validate()` writes "{label}: ..." and the Keychain
+        failure writes "Could not store {label} ...". A tab the user cannot see
+        is exactly where a rejected value would otherwise hide.
+        """
+        labels = [s.label for s in self.settings + self.toggles]
+        return any(label in text for text in errors for label in labels)
 
 
 # Everything that is not one of the eight declinable sources shares the "core"
@@ -73,6 +89,25 @@ CORE_SECTION_LABELS = {
 # Groups that govern more than one feature, and so cannot take a feature's own
 # label. One OAuth client, three things a user declines separately.
 GROUP_LABELS = {"google": "Google (calendar, sent mail, YouTube)"}
+
+# One accent per tab, so the rail reads as ten places rather than ten words.
+# Mid-ramp values, chosen to hold their contrast against both a light and a
+# dark Canvas — text never sits on them, only a dot, a rule and an 8% wash, so
+# one set covers both colour schemes. Keyed by slug; a group without a row here
+# falls back to the hairline grey rather than failing to render.
+DEFAULT_ACCENT = "#888780"
+ACCENTS = {
+    "core": "#888780",
+    "output": "#1D9E75",
+    "model": "#534AB7",
+    "google": "#378ADD",
+    "chrome": "#EF9F27",
+    "transcripts": "#D85A30",
+    "git": "#D4537E",
+    "strava": "#639922",
+    "clickup": "#0F6E56",
+    "notify": "#E24B4A",
+}
 
 
 def _label_for(name: str, group_features: list) -> str:
@@ -95,10 +130,10 @@ def groups() -> list[Group]:
             for section, label in CORE_SECTION_LABELS.items():
                 in_section = [r for r in rows if r.section == section]
                 if in_section:
-                    result.append(Group(name, label, in_section))
+                    result.append(Group(name, label, in_section, section))
             continue
         group_features = [f for f in features.FEATURES if f.settings_group == name]
-        result.append(Group(name, _label_for(name, group_features), rows))
+        result.append(Group(name, _label_for(name, group_features), rows, name))
     return result
 
 
@@ -365,8 +400,50 @@ def _group_html(group: Group) -> str:
 
     fields = "".join(_field(s) for s in group.settings + group.toggles)
     feature_list = f'<ul class="features">{states}</ul>' if states else ""
-    return (f'<section><h2>{html.escape(group.label)}</h2>'
+    # Every panel is rendered, always. The inactive ones are hidden in CSS
+    # rather than left out, because this is one form and one POST: a field the
+    # server did not send is a field the browser cannot send back, and the save
+    # would quietly drop every setting the user was not looking at.
+    return (f'<section id="p-{group.slug}" style="--accent:{group.accent}">'
+            f'<h2>{html.escape(group.label)}</h2>'
             f'{feature_list}{fields}</section>')
+
+
+def load_logo() -> str:
+    """ScribeJay's mark, inlined into the page.
+
+    Read from the packaged file rather than pasted into this module so there is
+    one copy of the artwork, and inlined rather than linked because the server
+    has no static route and may be running with no network at all. Missing art
+    is a cosmetic problem, not a reason to fail to render a settings screen, so
+    a missing file is an empty string — the same bargain `load_persona()`
+    makes in `core/model.py`.
+    """
+    try:
+        path = Path(__file__).resolve().parent.parent / "assets" / "scribejay.svg"
+        return path.read_text().strip()
+    except OSError:
+        return ""
+
+
+LOGO = load_logo()
+
+
+def _tab_css(group: Group) -> str:
+    """The three rules that make one radio reveal one panel.
+
+    Generated per group rather than written out, for the same reason the fields
+    are: a group that appears in `groups()` and not here would render a tab that
+    does nothing.
+    """
+    tab = f"#t-{group.slug}"
+    return (f'{tab}:checked ~ .panels #p-{group.slug} {{ display: block; }}'
+            f'{tab}:checked ~ .rail label[for="t-{group.slug}"] '
+            f'{{ border-left-color: var(--accent); border-bottom-color: var(--accent); '
+            f'font-weight: 600; '
+            f'background: color-mix(in srgb, var(--accent) 10%, transparent); }}'
+            f'{tab}:focus-visible ~ .rail label[for="t-{group.slug}"] '
+            f'{{ outline: 2px solid var(--accent); outline-offset: -2px; }}')
 
 
 def render(token: str, messages: list[str] = (), errors: list[str] = ()) -> str:
@@ -379,16 +456,36 @@ def render(token: str, messages: list[str] = (), errors: list[str] = ()) -> str:
     for text in messages:
         banner += f'<div class="banner ok">{html.escape(text)}</div>'
 
-    body = "".join(_group_html(g) for g in groups())
+    shown = groups()
+    flagged = {g.slug for g in shown if g.owns_error(errors)}
+    # Open on the tab that failed, not on the first one. A banner naming a
+    # field three tabs away is a banner the user cannot act on.
+    active = next((g.slug for g in shown if g.slug in flagged),
+                  shown[0].slug if shown else "")
+
+    radios = "".join(
+        f'<input type="radio" name="tab" class="tabradio" id="t-{g.slug}"'
+        f'{" checked" if g.slug == active else ""}>' for g in shown)
+    rail = ""
+    for g in shown:
+        mark = '<span class="flag">!</span>' if g.slug in flagged else ""
+        rail += (f'<label for="t-{g.slug}" style="--accent:{g.accent}">'
+                 f'<span class="dot"></span>{html.escape(g.label)}{mark}</label>')
+    panels = "".join(_group_html(g) for g in shown)
+    body = (f'<div class="tabs">{radios}'
+            f'<nav class="rail" aria-label="Settings sections">{rail}</nav>'
+            f'<div class="panels">{panels}</div></div>')
+    tab_css = "".join(_tab_css(g) for g in shown)
     token_attr = html.escape(token)
     token_js = json.dumps(token)
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ScribeJay settings</title>
-<style>{_CSS}</style></head>
+<style>{_CSS}{tab_css}</style></head>
 <body>
-<header><h1>ScribeJay settings</h1>
+<header>
+<div class="brand">{LOGO}<h1>ScribeJay settings</h1></div>
 <p>Stored in <code>{html.escape(str(config.config_path()))}</code>. Credentials
 go to the macOS Keychain, never to that file.</p></header>
 {banner}
@@ -418,13 +515,41 @@ document.querySelectorAll('button.test').forEach(function (b) {{
 
 _CSS = """
 :root { color-scheme: light dark; --line: #8883; }
-body { font: 15px/1.5 -apple-system, system-ui, sans-serif; max-width: 46rem;
+body { font: 15px/1.5 -apple-system, system-ui, sans-serif; max-width: 62rem;
        margin: 2rem auto; padding: 0 1rem 1rem; background: Canvas;
        color: CanvasText; }
-h1 { font-size: 1.4rem; margin: 0 0 .3rem; }
-h2 { font-size: 1.05rem; margin: 2rem 0 .5rem; padding-bottom: .3rem;
-     border-bottom: 1px solid var(--line); }
+h1 { font-size: 1.4rem; margin: 0; }
+/* The mark is inlined SVG, so its own width/height attributes are overridden
+   here rather than edited into the artwork. */
+.brand { display: flex; align-items: center; gap: .6rem; margin: 0 0 .3rem; }
+.brand svg { width: 2.1rem; height: 2.1rem; border-radius: 6px; flex: none; }
+h2 { font-size: 1.05rem; margin: 0 0 .8rem; padding-bottom: .3rem;
+     border-bottom: 2px solid var(--accent, var(--line)); }
 header p { opacity: .75; margin: 0 0 1rem; }
+/* The tab rail. No JavaScript: one radio per group, every radio ahead of both
+   the rail and the panels so a sibling selector can reach them. Switching
+   sections is something the page must still do with scripting off — and real
+   radios bring arrow-key navigation and a focus ring along for free. */
+.tabs { display: grid; grid-template-columns: 13rem minmax(0, 1fr);
+        gap: 1.5rem; align-items: start; margin-top: 1rem; }
+.tabradio { position: absolute; width: 1px; height: 1px; opacity: 0;
+            pointer-events: none; }
+.rail { grid-column: 1; display: flex; flex-direction: column; gap: 1px; }
+.rail label { display: flex; align-items: center; gap: .5rem; font-weight: 400;
+              margin: 0; padding: .35rem .5rem; cursor: pointer;
+              border-left: 3px solid transparent; font-size: .92rem; }
+.rail label:hover { background: #8881; }
+.rail .dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none;
+             background: var(--accent); }
+.rail .flag { margin-left: auto; color: #cf222e; font-weight: 600; }
+.panels { grid-column: 2; }
+.panels > section { display: none; }
+@media (max-width: 46rem) {
+  .tabs { grid-template-columns: 1fr; gap: .75rem; }
+  .rail { grid-column: 1; flex-direction: row; flex-wrap: wrap; }
+  .panels { grid-column: 1; }
+  .rail label { border-left: 0; border-bottom: 3px solid transparent; }
+}
 .row { margin: 0 0 1.1rem; }
 label { display: block; font-weight: 600; margin-bottom: .2rem; }
 input, select { width: 100%; padding: .4rem; font: inherit;

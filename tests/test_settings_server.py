@@ -308,3 +308,83 @@ def test_test_feature_counts_rows(monkeypatch):
     monkeypatch.setattr(strava, "fetch_strava",
                         lambda *a, **k: {"activities": [1, 2, 3]})
     assert "3 row(s)" in settings_form.test_feature("strava")
+
+
+# ---- the tab rail -------------------------------------------------------------
+# The rail is generated from `groups()`, so what is tested here is that the
+# three halves stay in step: a radio, a label that points at it, a panel it
+# reveals, and a CSS rule that does the revealing. A tab missing any one of
+# those looks fine and does nothing.
+
+def test_every_group_has_a_radio_a_label_a_panel_and_a_rule():
+    page = settings_form.render("t")
+    for group in settings_form.groups():
+        assert f'id="t-{group.slug}"' in page, f"{group.slug} has no radio"
+        assert f'for="t-{group.slug}"' in page, f"{group.slug} has no rail label"
+        assert f'id="p-{group.slug}"' in page, f"{group.slug} has no panel"
+        assert f"#t-{group.slug}:checked ~ .panels #p-{group.slug}" in page, (
+            f"{group.slug} has a tab that reveals nothing")
+
+
+def test_slugs_are_unique():
+    """`core` yields three groups sharing a name, which is why the rail keys
+    off the slug — two panels with one id would leave one unreachable."""
+    slugs = [g.slug for g in settings_form.groups()]
+    assert len(slugs) == len(set(slugs))
+
+
+def test_exactly_one_tab_is_open():
+    assert settings_form.render("t").count(" checked>") == 1
+
+
+def test_a_rejected_field_opens_its_own_tab():
+    """A banner naming a field three tabs away is a banner nobody can act on."""
+    setting = schema.get("OLLAMA_NUM_CTX")
+    page = settings_form.render("t", [], [f"{setting.label}: 'x' is not a number."])
+    assert f'id="t-model" checked' in page
+    assert '<span class="flag">' in page
+
+
+def test_a_clean_page_opens_on_the_first_group():
+    first = settings_form.groups()[0]
+    page = settings_form.render("t")
+    assert f'id="t-{first.slug}" checked' in page
+    assert '<span class="flag">' not in page
+
+
+def test_every_group_carries_an_accent():
+    for group in settings_form.groups():
+        assert group.accent.startswith("#"), f"{group.slug} has no accent colour"
+
+
+# ---- the mark ------------------------------------------------------------------
+
+def test_the_logo_is_inlined_in_the_page():
+    """Inlined, not linked: the server has no static route, and it may be
+    running with no network at all."""
+    page = settings_form.render("t")
+    assert '<div class="brand">' in page
+    assert "<svg" in page
+
+
+def test_the_logo_ships_inside_the_package():
+    """Installed with `uv tool install` there is no checkout to read from, so
+    the file has to sit under scribejay/ and be listed in package-data."""
+    import tomllib
+    from pathlib import Path
+
+    art = Path(settings_form.__file__).resolve().parent.parent / "assets" / "scribejay.svg"
+    assert art.is_file(), "scribejay/assets/scribejay.svg is missing"
+
+    root = Path(__file__).resolve().parent.parent
+    data = tomllib.loads((root / "pyproject.toml").read_text())
+    included = data["tool"]["setuptools"]["package-data"]["scribejay"]
+    assert "assets/*" in included, "assets/ would not travel inside the wheel"
+
+
+def test_a_missing_logo_does_not_break_the_page(monkeypatch):
+    """Missing artwork is cosmetic. It is not a reason to fail to render the
+    one screen a user opens to fix a broken setting."""
+    monkeypatch.setattr(settings_form, "LOGO", "")
+    page = settings_form.render("t")
+    assert "ScribeJay settings" in page
