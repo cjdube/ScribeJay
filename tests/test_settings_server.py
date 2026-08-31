@@ -388,3 +388,81 @@ def test_a_missing_logo_does_not_break_the_page(monkeypatch):
     monkeypatch.setattr(settings_form, "LOGO", "")
     page = settings_form.render("t")
     assert "ScribeJay settings" in page
+
+
+# ---- the event-colour tab -------------------------------------------------------
+# The colour table is the one panel not built from `schema.SETTINGS`: it is a
+# list of rows, not a value. What is tested here is that editing one colour
+# leaves everything else in the section exactly as it was.
+
+def _categories():
+    return config.section("calendar")["categories"]
+
+
+def test_the_colour_tab_has_a_field_for_every_category():
+    page = settings_form.render("t")
+    assert 'id="p-colors"' in page
+    for index, _ in settings_form.calendar_rows():
+        assert f'name="cal_color_{index}"' in page
+
+
+def test_saving_a_colour_writes_the_id_and_the_name_together():
+    """Two fields for one fact. The form writes the name from the id so they
+    cannot drift — Google paints the id, the colorizer shows the model the
+    name, and a category labelled Grape but painted Peacock trains it on a lie."""
+    index, entry = settings_form.calendar_rows()[0]
+    saved, errors = settings_form.apply({f"cal_color_{index}": "2"})
+    assert not errors
+    assert _categories()[index]["color_id"] == "2"
+    assert _categories()[index]["color_name"] == "Sage"
+
+
+def test_a_colour_change_leaves_the_name_hint_and_role_alone():
+    index, before = next((i, c) for i, c in settings_form.calendar_rows()
+                         if c.get("role") and c.get("hint"))
+    name, hint, role = before["name"], before["hint"], before["role"]
+    settings_form.apply({f"cal_color_{index}": "8"})
+    after = _categories()[index]
+    assert (after["name"], after["hint"], after["role"]) == (name, hint, role)
+
+
+def test_a_colour_google_does_not_have_is_rejected_and_nothing_is_written():
+    index, entry = settings_form.calendar_rows()[0]
+    was = _categories()[index]["color_id"]
+    saved, errors = settings_form.apply(
+        {f"cal_color_{index}": "12", "TIMEZONE": "America/New_York"})
+    assert errors and "eleven event colours" in errors[0]
+    assert not saved
+    assert _categories()[index]["color_id"] == was
+
+
+def test_a_rejected_colour_opens_the_colour_tab():
+    entry = settings_form.calendar_rows()[0][1]
+    page = settings_form.render("t", [], [f"{entry['name']}: '12' is not one of "
+                                          f"Google's eleven event colours."])
+    assert 'id="t-colors" checked' in page
+
+
+def test_an_unshowable_category_is_neither_shown_nor_overwritten():
+    """A malformed entry cannot be edited from a dropdown, so it is skipped —
+    but the index the form submits is its position in the *stored* list, so
+    skipping it must not renumber the rows below it."""
+    config.set_preference("calendar", {"categories": [
+        {"name": "Broken"},                       # no color_id: not editable
+        {"name": "Fine", "color_id": "1", "color_name": "Lavender"},
+    ]})
+    config.flush()
+
+    rows = settings_form.calendar_rows()
+    assert [i for i, _ in rows] == [1], "the malformed entry should be skipped"
+
+    settings_form.apply({"cal_color_1": "11"})
+    after = _categories()
+    assert after[0] == {"name": "Broken"}, "the entry that was skipped was edited"
+    assert after[1]["color_id"] == "11"
+
+
+def test_no_calendar_categories_means_no_colour_tab():
+    config.set_preference("calendar", {"categories": []})
+    config.flush()
+    assert "colors" not in {g.slug for g in settings_form.groups()}

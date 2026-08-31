@@ -155,6 +155,17 @@ colorIds. Each entry:
 Several categories may share one `color_id`. Distinct names classify better
 than one grab-bag category with a long `hint`.
 
+`color_id` and `color_name` are two fields for one fact, so they can disagree.
+`scribejay/core/schema.py:GOOGLE_EVENT_COLORS` is the pairing Google actually
+uses; the **Event colours** tab in `scribejay settings` writes the name from
+the id, and `tests/test_config.py` fails if a shipped category names its colour
+wrongly. Editing the file by hand, change both.
+
+The settings screen edits the colour and nothing else. `name`, `hint` and
+`role` are still file-only: one wrong `role` silently changes which colour
+Strava activities are logged with, which is not a mistake worth making from a
+dropdown.
+
 **Roles** decouple what the code needs from what you call your categories, so
 renaming "Work" to "Day job" breaks nothing. Three are read:
 

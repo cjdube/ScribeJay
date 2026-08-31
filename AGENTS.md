@@ -63,7 +63,11 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   `core/registry.py` — never a hand-kept list, or the screen drifts from what
   the code reads. Naming a key for *presentation* is fine and already
   happens: `FILE_PATH_KEYS` and the `TIMEZONE` widget are special cases in
-  the renderer, not extra fields.
+  the renderer, not extra fields. The Event colours tab is the one panel with
+  no schema rows behind it — a structured section is a list, not a value — but
+  it is still derived, from `config.section("calendar")` and
+  `schema.GOOGLE_EVENT_COLORS`, and it edits only the colour: `name`, `hint`
+  and `role` stay file-only.
 
   `cli/init.py` and `cli/doctor.py` do name individual settings, because
   asking a question and checking a specific thing both require knowing which

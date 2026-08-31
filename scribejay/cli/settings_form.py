@@ -53,7 +53,7 @@ class Group:
     """
 
     def __init__(self, name: str, label: str, rows: list[schema.Setting],
-                 slug: str):
+                 slug: str, categories: list = ()):
         self.name = name
         self.label = label
         # `name` is not unique — core yields three groups — so the tab rail,
@@ -62,7 +62,16 @@ class Group:
         self.accent = ACCENTS.get(slug, DEFAULT_ACCENT)
         self.settings = [s for s in rows if not s.key.startswith("SCRIBEJAY_FEATURE_")]
         self.toggles = [s for s in rows if s.key.startswith("SCRIBEJAY_FEATURE_")]
-        self.features = [f for f in features.FEATURES if f.settings_group == name]
+        # `(index, entry)` pairs from the calendar section — empty for every
+        # group but the colour table. The index is the position in the *stored*
+        # list, not in this one, so a malformed entry that is not shown is
+        # still not overwritten on save.
+        self.categories = list(categories)
+        # The colour table is a second panel on the google feature, so it takes
+        # the feature name but not the feature list: three Test buttons belong
+        # on the tab that configures the OAuth client, and only there.
+        self.features = ([] if self.categories else
+                         [f for f in features.FEATURES if f.settings_group == name])
 
     def owns_error(self, errors) -> bool:
         """Does one of this group's fields explain one of these errors?
@@ -72,7 +81,8 @@ class Group:
         failure writes "Could not store {label} ...". A tab the user cannot see
         is exactly where a rejected value would otherwise hide.
         """
-        labels = [s.label for s in self.settings + self.toggles]
+        labels = ([s.label for s in self.settings + self.toggles]
+                  + [c["name"] for _, c in self.categories])
         return any(label in text for text in errors for label in labels)
 
 
@@ -101,6 +111,7 @@ ACCENTS = {
     "output": "#1D9E75",
     "model": "#534AB7",
     "google": "#378ADD",
+    "colors": "#8E24AA",
     "chrome": "#EF9F27",
     "transcripts": "#D85A30",
     "git": "#D4537E",
@@ -116,6 +127,65 @@ def _label_for(name: str, group_features: list) -> str:
     if len(group_features) == 1:
         return group_features[0].label
     return name.title()
+
+
+CATEGORY_FIELD = "cal_color_"
+
+
+def calendar_rows() -> list[tuple[int, dict]]:
+    """The categories worth showing, paired with their position in the stored
+    list.
+
+    Filtered the same way `config.calendar_categories()` filters — an entry
+    without a name or a colorId is not something this form can edit — but the
+    index is into the raw list, so saving cannot renumber or drop the entries
+    that were skipped.
+    """
+    raw = config.section("calendar").get("categories", [])
+    if not isinstance(raw, list):
+        return []
+    return [(i, c) for i, c in enumerate(raw)
+            if isinstance(c, dict) and c.get("name") and c.get("color_id")]
+
+
+def apply_categories(fields: dict[str, str]) -> tuple[dict | None, list[str]]:
+    """(calendar section to stage, errors). None means nothing was submitted.
+
+    Only the colour moves. `name`, `hint` and `role` are the classification
+    prompt and the operational lookups — editing those from a dropdown is a
+    different job, and one wrong `role` silently changes which colour Strava
+    activities are logged with.
+
+    `color_name` is written from the id rather than accepted from the form, so
+    the two fields cannot disagree. They are what the colorizer shows the model
+    and what Google actually paints; a category labelled Grape and painted
+    Peacock trains the model on a lie.
+    """
+    import copy
+
+    rows = calendar_rows()
+    submitted = {i: fields[f"{CATEGORY_FIELD}{i}"] for i, _ in rows
+                 if f"{CATEGORY_FIELD}{i}" in fields}
+    if not submitted:
+        return None, []
+
+    errors = []
+    for index, entry in rows:
+        color_id = submitted.get(index, "").strip()
+        if color_id and color_id not in schema.COLOR_NAMES:
+            errors.append(f"{entry['name']}: '{color_id}' is not one of Google's "
+                          f"eleven event colours.")
+    if errors:
+        return None, errors
+
+    section = copy.deepcopy(config.section("calendar"))
+    for index, _ in rows:
+        color_id = submitted.get(index, "").strip()
+        if not color_id:
+            continue
+        section["categories"][index]["color_id"] = color_id
+        section["categories"][index]["color_name"] = schema.COLOR_NAMES[color_id]
+    return section, []
 
 
 def groups() -> list[Group]:
@@ -134,6 +204,13 @@ def groups() -> list[Group]:
             continue
         group_features = [f for f in features.FEATURES if f.settings_group == name]
         result.append(Group(name, _label_for(name, group_features), rows, name))
+        if name == "google":
+            # Beside the calendar it recolours, and only if there is a table to
+            # show — a config with no categories gets no empty tab.
+            rows_out = calendar_rows()
+            if rows_out:
+                result.append(Group("google", "Event colours", [], "colors",
+                                    categories=rows_out))
     return result
 
 
@@ -252,14 +329,21 @@ def apply(fields: dict[str, str]) -> tuple[list[str], list[str]]:
         else:
             staged.append((setting, value))
 
+    calendar, calendar_errors = apply_categories(fields)
+    errors += calendar_errors
+
     if errors:
         return [], errors
 
     for setting, value in staged:
         config.set_value(setting.key, value)
+    if calendar is not None:
+        config.set_preference("calendar", calendar)
     config.flush()
 
     saved = [f"Saved {len(staged)} setting(s) to {config.config_path()}"]
+    if calendar is not None:
+        saved.append(f"Saved {len(calendar.get('categories', []))} event colour(s)")
 
     # Credentials last, and only after the settings file is on disk: a Keychain
     # write that fails should not also lose the twenty non-secret fields the
@@ -385,6 +469,34 @@ def _field(setting: schema.Setting) -> str:
             f'<code class="key">{key}</code></div>')
 
 
+def _category_row(index: int, entry: dict) -> str:
+    key = f"{CATEGORY_FIELD}{index}"
+    current = str(entry.get("color_id", ""))
+    hint = entry.get("hint", "")
+    role = entry.get("role", "")
+
+    options = "".join(
+        f'<option value="{cid}"{" selected" if cid == current else ""}>{name}</option>'
+        for cid, name, _ in schema.GOOGLE_EVENT_COLORS)
+    swatch = schema.COLOR_HEX.get(current, "#8888")
+    note = html.escape(hint) if hint else ""
+    if role:
+        note += f' <code class="role">role: {html.escape(role)}</code>'
+
+    return (f'<div class="cat"><span class="swatch" style="background:{swatch}"></span>'
+            f'<div class="catname"><label for="{key}">{html.escape(entry["name"])}</label>'
+            f'{f"<p class=\"help\">{note}</p>" if note else ""}</div>'
+            f'<select name="{key}" id="{key}">{options}</select></div>')
+
+
+def _categories_html(group: Group) -> str:
+    rows = "".join(_category_row(i, c) for i, c in group.categories)
+    return (f'<p class="help">The colour each kind of event is painted on your '
+            f'calendar. Names and classification hints are not editable here — '
+            f'they are the prompt the colorizer shows the model, and they live '
+            f'in the settings file.</p>{rows}')
+
+
 def _group_html(group: Group) -> str:
     states = ""
     for feature in group.features:
@@ -398,7 +510,8 @@ def _group_html(group: Group) -> str:
                    f'<span class="result" id="r-{html.escape(feature.name)}"></span>'
                    f'</li>')
 
-    fields = "".join(_field(s) for s in group.settings + group.toggles)
+    fields = ("".join(_field(s) for s in group.settings + group.toggles)
+              or (_categories_html(group) if group.categories else ""))
     feature_list = f'<ul class="features">{states}</ul>' if states else ""
     # Every panel is rendered, always. The inactive ones are hidden in CSS
     # rather than left out, because this is one form and one POST: a field the
@@ -557,6 +670,18 @@ input, select { width: 100%; padding: .4rem; font: inherit;
                 background: transparent; color: inherit; }
 .help { margin: .25rem 0 0; font-size: .85rem; opacity: .75; }
 .key { font-size: .75rem; opacity: .5; }
+.cat { display: grid; grid-template-columns: 1rem minmax(0, 1fr) 10rem;
+       gap: .6rem; align-items: center; margin: 0 0 .7rem; }
+.cat .catname label { margin: 0; }
+.cat .help { margin: 0; }
+.cat select { width: 100%; }
+.swatch { width: 1rem; height: 1rem; border-radius: 3px;
+          border: 1px solid var(--line); }
+.role { font-size: .7rem; opacity: .6; }
+@media (max-width: 34rem) {
+  .cat { grid-template-columns: 1rem minmax(0, 1fr); }
+  .cat select { grid-column: 2; }
+}
 .features { list-style: none; padding: 0; margin: 0 0 1rem; }
 .features li { padding: .25rem 0; }
 .state { font-size: .75rem; padding: .05rem .4rem; border-radius: 4px;

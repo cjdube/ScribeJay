@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from scribejay.core import config as prefs
+from scribejay.core import config as prefs, schema
 
 
 # ---- shipped defaults satisfy every consumer's contract ---------------------
@@ -342,3 +342,18 @@ def test_mutating_what_section_returns_does_not_poison_the_defaults(monkeypatch,
     prefs.section("calendar")["categories"].clear()
     prefs.reload()
     assert len(prefs.calendar_categories()) == 11
+
+
+def test_every_shipped_category_names_its_colour_correctly():
+    """`color_id` is what reaches Google; `color_name` is what the colorizer
+    shows the model. Two fields for one fact, so they can disagree — and a
+    category labelled Grape but painted Peacock trains the model on a lie."""
+    for c in prefs.calendar_categories():
+        assert schema.COLOR_NAMES.get(c["color_id"]) == c["color_name"], (
+            f"{c['name']}: colorId {c['color_id']} is "
+            f"{schema.COLOR_NAMES.get(c['color_id'])}, not {c['color_name']}")
+
+
+def test_the_google_palette_is_the_eleven_ids_google_accepts():
+    ids = [cid for cid, _, _ in schema.GOOGLE_EVENT_COLORS]
+    assert ids == [str(n) for n in range(1, 12)]

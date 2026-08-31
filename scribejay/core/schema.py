@@ -492,6 +492,29 @@ SETTINGS: tuple[Setting, ...] = (
 # top of nothing — a section the user has written REPLACES the default whole
 # rather than merging key by key, because a user who edits their category list
 # down to four means four, not four plus the eleven shipped ones.
+# Google Calendar's own event palette: the eleven colorIds a calendar event can
+# carry, and nothing else. Google's, not ScribeJay's — an event coloured "12"
+# is rejected by the API, so this doubles as the validation list for the
+# settings screen. The hex values are cosmetic, used only to draw a swatch next
+# to each name; the `color_id` is what actually reaches Google.
+GOOGLE_EVENT_COLORS: tuple[tuple[str, str, str], ...] = (
+    ("1", "Lavender", "#7986CB"),
+    ("2", "Sage", "#33B679"),
+    ("3", "Grape", "#8E24AA"),
+    ("4", "Flamingo", "#E67C73"),
+    ("5", "Banana", "#F6BF26"),
+    ("6", "Tangerine", "#F4511E"),
+    ("7", "Peacock", "#039BE5"),
+    ("8", "Graphite", "#616161"),
+    ("9", "Blueberry", "#3F51B5"),
+    ("10", "Basil", "#0B8043"),
+    ("11", "Tomato", "#D50000"),
+)
+
+COLOR_NAMES: dict[str, str] = {cid: name for cid, name, _ in GOOGLE_EVENT_COLORS}
+COLOR_HEX: dict[str, str] = {cid: hexv for cid, _, hexv in GOOGLE_EVENT_COLORS}
+
+
 STRUCTURED_DEFAULTS: dict[str, dict] = {
     "persona": {
         "user_name": "Alex",

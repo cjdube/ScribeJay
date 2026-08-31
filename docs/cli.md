@@ -186,6 +186,14 @@ or not you are looking at it, and nothing is written unless every field on
 every tab validates. If a save is rejected, the page reopens on the tab that
 holds the rejected field and marks it.
 
+The **Event colours** tab is the one panel not built from a schema row: it is a
+list, not a value. It shows each calendar category with the colour it is
+painted, and a dropdown of Google's eleven event colours. Only the colour is
+editable — `name`, `hint` and `role` are the classification prompt and the
+operational lookups, and they stay in the settings file
+([configuration.md](configuration.md#calendar)). Picking a colour writes both
+`color_id` and `color_name`, so the two cannot drift apart.
+
 **Credentials are write-only.** A secret field shows `set` or `not set`, never
 the value. Leaving it blank means "leave it alone" — it cannot mean "clear it",
 because the field renders blank on every visit and clearing on blank would
