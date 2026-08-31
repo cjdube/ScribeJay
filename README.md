@@ -49,10 +49,17 @@ See [docs/cli.md](docs/cli.md) for every command.
 | `strava_download` | 5:50 AM | Yesterday's Strava activities, as calendar events | Google + Strava |
 | `calendar_colorizer` | 5:00 PM | Yesterday's uncategorized events, colour-coded by type | Google |
 
-Each job is `gather (Python) -> one model call -> write` — see
+Each job is `gather (Python) -> model -> write` — see
 [docs/architecture.md](docs/architecture.md#shape-a-pipeline-agent-not-a-tool-calling-one).
 The model writes short blurbs and classifications; Python owns every date, URL
 and file structure.
+
+The middle step varies, and the ends are what define the shape. Four jobs make
+one call. `ai_chat_learnings` makes one per chat and `claude_time_blocks` one
+per block, each small and bounded. `strava_download` and `daily_correspondence`
+make **none at all** — an activity's fields and a sent-mail header need no
+sentence written about them, and asking for one would only invent detail the
+source does not carry.
 
 ## Where it writes
 
@@ -122,9 +129,18 @@ scribejay run daily_chrome_learnings
 scribejay run daily_commits --date 2026-08-29
 ```
 
-Arguments after the task name go to the task itself — see
-`python -m scribejay.<task> --help` for its flags. Most jobs support
-`--dry-run`.
+Arguments after the task name go to the task itself. Most jobs take none —
+they do yesterday, which is the only day they are for. The four that do:
+
+| Job | Flags |
+|---|---|
+| `ai_chat_learnings` | `--date`, `--backfill N` |
+| `claude_time_blocks` | `--date`, `--backfill N`, `--dry-run` |
+| `daily_commits` | `--date`, `--backfill N` |
+| `daily_correspondence` | `--date`, `--backfill N` |
+
+`--dry-run` exists only on `claude_time_blocks`. Ask any task for its own list
+with `python -m scribejay.<task> --help`.
 
 ## Scheduling
 
@@ -166,6 +182,19 @@ python3 -m venv .venv
   model copy an id
 - [docs/ntfy-setup.md](docs/ntfy-setup.md) — the push-alert server
 - [docs/logs.md](docs/logs.md) — where each job's logs live
+
+One page per job, for when a page reads wrong and you want to know why:
+
+- [docs/ai-chat-learnings.md](docs/ai-chat-learnings.md) — reading Claude Code,
+  Codex and Gemini chats off the disk
+- [docs/ai-session-time-blocks.md](docs/ai-session-time-blocks.md) — turning
+  those same session logs into calendar blocks
+- [docs/daily-commits.md](docs/daily-commits.md) — git commits and closed
+  ClickUp Tasks
+- [docs/daily-learnings.md](docs/daily-learnings.md) — Chrome browsing and
+  YouTube Likes
+- [docs/daily-correspondence.md](docs/daily-correspondence.md) — who yesterday
+  was spent writing to
 
 ## Security model
 
