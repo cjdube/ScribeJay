@@ -304,6 +304,19 @@ SETTINGS: tuple[Setting, ...] = (
              "read from a folder you drop them into.",
         default=str(_HOME / "Documents" / "ScribeJay" / "gemini_inbox"),
     ),
+    # Deliberately not type="path": this value is a path *pattern* that gets
+    # compared against a folder name, never a folder ScribeJay opens, so it
+    # must not have to exist on disk before the settings screen will save it.
+    Setting(
+        key="SCRIBEJAY_EXCLUDED_SESSIONS_DIR", section="transcripts",
+        name="excluded_sessions_dir",
+        feature="transcripts",
+        label="Ignore sessions under",
+        help="Sessions whose working directory is inside this folder are "
+             "skipped — the throwaway worktrees a headless agent builds in, "
+             "which are a machine's work rather than yours.",
+        default=str(_HOME / "Projects" / ".wren-builds"),
+    ),
     Setting(
         key="AI_CHAT_LEARNINGS_MAX_CHARS", section="transcripts", name="max_chars",
         type="int", feature="transcripts",

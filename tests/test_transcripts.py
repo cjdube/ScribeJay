@@ -369,3 +369,79 @@ def test_compact_trims_the_middle():
     out = ct._compact(["X" * 200], max_chars=60)
     assert out.startswith("X")
     assert "trimmed" in out
+
+
+# --- Machine-started build sessions -----------------------------------------
+# A headless agent runs each Claude Code build in a throwaway worktree, and the
+# transcript lands in ~/.claude/projects like any session of the user's own.
+# Encoded independently of _encode_project_dir here, so a broken encoder cannot
+# quietly build a fixture that agrees with itself.
+_BUILD_CWD = str(Path.home() / "Projects" / ".wren-builds" / "some-build-92e15ff5")
+_BUILD_DIR = _BUILD_CWD.replace("/", "-").replace(".", "-")
+
+
+def _write_session_in(dir_name: str, cwd: str, name="sess.jsonl") -> None:
+    project_dir = ct.CLAUDE_PROJECTS_DIR / dir_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    path = project_dir / name
+    path.write_text(json.dumps(
+        {"timestamp": _ts(1, 10), "cwd": cwd,
+         "message": {"role": "user", "content": "hi"}}))
+    os.utime(path, (END.timestamp(), END.timestamp()))
+
+
+def test_project_dir_encoding_matches_a_real_claude_code_folder():
+    # The pair the exclusion is built on: every non-alphanumeric character
+    # becomes "-", which is why ".wren-builds" contributes a doubled "-".
+    assert ct._encode_project_dir(
+        "/Users/craigdube/Projects/.wren-builds/"
+        "in-session-chat-history-retrieve-and-nav-prior-m-92e15ff5"
+    ) == ("-Users-craigdube-Projects--wren-builds-"
+          "in-session-chat-history-retrieve-and-nav-prior-m-92e15ff5")
+
+
+def test_excluded_sessions_prefix_defaults_to_the_build_worktree_root():
+    assert ct.excluded_sessions_prefix() == \
+        str(Path.home() / "Projects").replace("/", "-") + "--wren-builds"
+
+
+def test_fetch_claude_sessions_skips_build_worktrees_and_keeps_mine():
+    _write_session_in(_BUILD_DIR, _BUILD_CWD)
+    _write_session_in("-Users-x-Projects-MyApp", "/Users/x/Projects/MyApp")
+
+    # Both halves in one test: a filter that dropped everything would pass a
+    # test that only checked the skip.
+    assert [s["project"] for s in ct.fetch_claude_sessions(START, END)] == ["MyApp"]
+
+
+def test_fetch_session_activity_skips_build_worktrees_and_keeps_mine():
+    # The calendar reader matters as much as the learnings one: a 30-minute
+    # machine build must not be drawn as 30 minutes of the user's own work.
+    _write_session_in(_BUILD_DIR, _BUILD_CWD)
+    _write_session_in("-Users-x-Projects-MyApp", "/Users/x/Projects/MyApp")
+
+    assert [e["project"] for e in ct.fetch_session_activity(START, END)] == ["MyApp"]
+
+
+def test_a_sibling_folder_outside_the_excluded_root_is_kept():
+    # ~/Projects/.wren-buildsX is a different folder, not one inside the
+    # excluded root, so a bare startswith would wrongly sweep it up.
+    sibling_cwd = str(Path.home() / "Projects" / ".wren-buildsX")
+    _write_session_in(sibling_cwd.replace("/", "-").replace(".", "-"), sibling_cwd)
+
+    assert [s["project"] for s in ct.fetch_claude_sessions(START, END)] == \
+        [".wren-buildsX"]
+
+
+def test_the_exclusion_follows_the_configured_path(monkeypatch):
+    monkeypatch.setenv("SCRIBEJAY_EXCLUDED_SESSIONS_DIR", "/Users/x/Projects/MyApp")
+    _write_session_in(_BUILD_DIR, _BUILD_CWD)
+    _write_session_in("-Users-x-Projects-MyApp", "/Users/x/Projects/MyApp")
+
+    # The setting moved, so the exclusion moved with it: what the default skips
+    # is now kept, and the newly named folder is the one dropped. Without this
+    # the default would be the only thing the suite ever exercises.
+    assert [s["project"] for s in ct.fetch_claude_sessions(START, END)] == \
+        ["some-build-92e15ff5"]
+    assert [e["project"] for e in ct.fetch_session_activity(START, END)] == \
+        ["some-build-92e15ff5"]

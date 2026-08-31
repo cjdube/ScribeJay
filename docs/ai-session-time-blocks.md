@@ -20,6 +20,8 @@ Claude Code timestamps every event it writes to
 disk (`CLAUDE_CONFIG_DIR` defaults to `~/.claude`). Codex Desktop likewise writes
 timestamped JSONL under `${CODEX_HOME:-~/.codex}/sessions`.
 
+Sessions a headless agent started on its own are not the user's work, so both Claude readers skip any whose working directory is inside `SCRIBEJAY_EXCLUDED_SESSIONS_DIR` (default `~/Projects/.wren-builds`, the build-worktree root). The match is on the project folder name — Claude Code's encoding of the working directory, every non-alphanumeric character replaced by `-` — so it costs a string comparison and never a file read.
+
 `fetch_session_activity` returns one entry per timestamped event —
 `{ts, project, slug, session, text}` — across Claude sessions. The Codex reader
 returns the same shape, with an empty slug. Both readers keep timestamped tool,

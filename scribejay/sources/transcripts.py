@@ -40,6 +40,49 @@ def claude_projects_dir() -> Path:
 # Module-level so tests can redirect them away from the real session stores.
 CLAUDE_PROJECTS_DIR = claude_projects_dir()
 
+# Sessions a *machine* started, not the user. A headless agent that drives
+# Claude Code runs each build in a throwaway git worktree, so its transcripts
+# land here like any other session: the one "user" turn is a generated prompt,
+# every build invents a new project name, and the time it burned would be drawn
+# on the calendar as the user's own work. Excluded by working directory —
+# a fact — rather than by guessing from a session's contents.
+DEFAULT_EXCLUDED_SESSIONS_DIR = str(Path.home() / "Projects" / ".wren-builds")
+
+# Claude Code names a project folder after the working directory with every
+# non-alphanumeric character replaced by "-". Derived from a real pair:
+#   /Users/craigdube/Projects/.wren-builds/in-session-chat-...-92e15ff5
+#   -Users-craigdube-Projects--wren-builds-in-session-chat-...-92e15ff5
+# — the leading "/", the inner "/"s and the "." of ".wren-builds" all become
+# "-", which is why the encoded name carries a doubled "-" there.
+_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]")
+
+
+def _encode_project_dir(path: str) -> str:
+    """Claude Code's project-folder name for a working directory."""
+    return _NON_ALNUM_RE.sub("-", path)
+
+
+def excluded_sessions_prefix() -> str:
+    """The encoded project-folder prefix whose sessions are skipped."""
+    raw = config.getenv("SCRIBEJAY_EXCLUDED_SESSIONS_DIR", DEFAULT_EXCLUDED_SESSIONS_DIR)
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    return _encode_project_dir(str(Path(raw).expanduser()))
+
+
+def _is_excluded_project(dir_name: str, prefix: str) -> bool:
+    """True if a project folder is the excluded directory or sits inside it.
+
+    Compared segment-wise ("prefix" or "prefix-...") rather than by a bare
+    startswith, so a sibling like ".wren-buildsX" is not swept up with it. The
+    encoding flattens "/" and "-" onto the same character, so a sibling named
+    ".wren-builds-archive" is genuinely indistinguishable from a child — a
+    limit of Claude Code's folder naming, not of this check."""
+    if not prefix:
+        return False
+    return dir_name == prefix or dir_name.startswith(prefix + "-")
+
 
 def codex_sessions_dir() -> Path:
     """Codex's local session root, including its existing home override."""
@@ -177,20 +220,8 @@ def fetch_claude_sessions(start: datetime, end: datetime,
     local bounds), as [{"project", "slug", "started_at", "text"}], oldest first.
     A session active across several days appears once per day, carrying only that
     day's turns. Returns [] if the session store is absent (nothing to do)."""
-    if not CLAUDE_PROJECTS_DIR.exists():
-        return []
-
-    start_ts = start.timestamp()
     sessions = []
-    for path in sorted(CLAUDE_PROJECTS_DIR.glob("*/*.jsonl")):
-        # Append-only logs: a file last written before the day began can't hold
-        # any of that day's events, so skip it without parsing — this keeps a
-        # 14-day backfill from re-reading every historical transcript 14 times.
-        try:
-            if path.stat().st_mtime < start_ts:
-                continue
-        except OSError:
-            continue
+    for path in _session_files(start):
         session = _read_session_day(path, start, end, max_chars)
         if session:
             sessions.append(session)
@@ -464,15 +495,21 @@ def fetch_codex_session_activity(start: datetime, end: datetime, logger=None) ->
 
 
 def _session_files(start: datetime) -> list[Path]:
-    """Every session log that could hold an event at or after `start`. The
-    mtime prefilter is the same one fetch_claude_sessions relies on: these are
-    append-only logs, so a file last written before the window began can't hold
-    any of its events and is skipped without being parsed."""
+    """Every session log that could hold an event at or after `start`. Shared by
+    both Claude readers, so the machine-started sessions above are excluded once
+    for all of them. These are append-only logs, so a file last written before
+    the window began can't hold any of its events and is skipped without being
+    parsed."""
     if not CLAUDE_PROJECTS_DIR.exists():
         return []
     start_ts = start.timestamp()
+    prefix = excluded_sessions_prefix()
     keep = []
     for path in sorted(CLAUDE_PROJECTS_DIR.glob("*/*.jsonl")):
+        # Before the stat, and long before any read: an excluded session costs
+        # a string comparison on the folder name it already has.
+        if _is_excluded_project(path.parent.name, prefix):
+            continue
         try:
             if path.stat().st_mtime >= start_ts:
                 keep.append(path)

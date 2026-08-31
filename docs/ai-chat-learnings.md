@@ -22,6 +22,7 @@ documented API, so its reader warns and skips when the expected shape drifts.
 - **Claude Code sessions** — Claude Code writes every session to
   `<CLAUDE_CONFIG_DIR>/projects/<slug>/<uuid>.jsonl` as an append-only log of
   JSON events (`CLAUDE_CONFIG_DIR` defaults to `~/.claude`).
+  Sessions a headless agent started on its own are not the user's work, so both Claude readers skip any whose working directory is inside `SCRIBEJAY_EXCLUDED_SESSIONS_DIR` (default `~/Projects/.wren-builds`, the build-worktree root). The match is on the project folder name — Claude Code's encoding of the working directory, every non-alphanumeric character replaced by `-` — so it costs a string comparison and never a file read.
   For a given day, `fetch_claude_sessions` reads every session with activity that
   day (across all projects), keeping only role=user/assistant **text** — tool
   calls, tool results, subagent sidechains, thinking blocks, and injected
