@@ -6,12 +6,14 @@ Keep `CLAUDE.md` as the import-only compatibility pointer `@AGENTS.md`.
 ScribeJay is a local-first journaling agent: it keeps the record of what
 actually happened — Strava activities logged onto the calendar, yesterday's
 events colour-coded after the fact, Claude/Codex working time turned into AI
-Session Time Blocks, and a daily page in the Obsidian vault built from Chrome
-history, YouTube Likes, Claude/Codex/Gemini chats and the day's commits.
+Session Time Blocks, and a daily page in the journal folder built from Chrome
+history, YouTube Likes, Claude/Codex/Gemini chats and the day's commits. That
+folder is a plain directory or an Obsidian vault, whichever the user points at.
 Nothing ships to a cloud model at runtime **by default** — an opt-in cloud
-backend (Gemini) is selectable per-task via `SCRIBEJAY_LLM_BACKEND` /
-`SCRIBEJAY_<TASK>_BACKEND`, which does send that task's gathered input
-off-device ([docs/llm-backend.md](docs/llm-backend.md)). Run `pytest` before
+backend (Gemini, or OpenRouter for anything behind one key) is selectable
+per-task via `SCRIBEJAY_LLM_BACKEND` / `SCRIBEJAY_<TASK>_BACKEND`, which does
+send that task's gathered input off-device
+([docs/llm-backend.md](docs/llm-backend.md)). Run `pytest` before
 calling any change to existing code done.
 
 **Origin.** ScribeJay grew out of LocalLLMAgent and became its own standalone
@@ -22,7 +24,9 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
 
 - `scribejay/core/` — the settings/model/logging/notify/store/http/dates/
   google seam every task reads through. `core/model.py` is the one choke
-  point for the single model call a task makes. `core/config.py` is the
+  point for every model call — four tasks make one, `ai_chat_learnings` one
+  per chat and `claude_time_blocks` one per block, and `strava_download` and
+  `daily_correspondence` make none at all. `core/config.py` is the
   settings seam, resolving env var -> `~/.scribejay/config.json` -> the
   default in `core/schema.py`, with secrets in the macOS Keychain via
   `core/secrets.py` ([docs/configuration.md](docs/configuration.md)).
@@ -33,23 +37,37 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   `git`, `gmail_sent`, `strava`, `transcripts`, `youtube`.
 - `scribejay/sinks/` — write-only: `calendar` (log an event, recolor one),
   `email` (the vault-write fallback and the colorizer's failure notice),
-  `vault` (write a day's entry to the Obsidian vault, or fall back to email
+  `vault` (write a day's entry to the journal folder, or fall back to email
   if the write fails).
 - `scribejay/*.py` (top level) — the eight task entrypoints, one per launchd
   job (see [docs/architecture.md](docs/architecture.md) for the schedule
-  table), plus `activity.py` (exclusion-filter and compaction helpers shared
-  by the daily learnings reviews) and `journal.py` /
-  `sources/transcripts.py` (shared helpers).
+  table), plus the helpers beside them: `activity.py` (exclusion-filter and
+  compaction, shared by the daily learnings reviews), `correspondence.py`
+  (the sent-mail noise filter and page builder), `journal.py` (deterministic
+  Markdown sections), `migrate.py` (the one reader of a legacy `config/.env`
+  or `preferences.json`) and `status.py`.
 - `scribejay/cli/` — the `scribejay` console command
   ([docs/cli.md](docs/cli.md)). `cli/schedule.py` generates the launchd plists
   from `core/registry.py`; `cli/settings_server.py` and `cli/settings_form.py`
   are the on-demand localhost settings screen, whose every field comes from
   `core/schema.py`; `cli/init.py` is the first-run wizard and `cli/doctor.py`
-  the health check. Nothing under `cli/` names an individual setting — except
-  `cli/init.py`, which asks about the Tier 0 ones by name and says so.
+  the health check.
+
+  **The generated surfaces stay generated.** `cli/settings_form.py` and
+  `cli/schedule.py` derive *what exists* from `core/schema.py` and
+  `core/registry.py` — never a hand-kept list, or the screen drifts from what
+  the code reads. Naming a key for *presentation* is fine and already
+  happens: `FILE_PATH_KEYS` and the `TIMEZONE` widget are special cases in
+  the renderer, not extra fields.
+
+  `cli/init.py` and `cli/doctor.py` do name individual settings, because
+  asking a question and checking a specific thing both require knowing which
+  thing. Adding one there is a deliberate edit, not a violation.
 - `tests/` — flat pytest suite, one `test_<module>.py` per source module.
-- `config/` — `.env` (documented in `.env.example`) plus `preferences.json`,
-  both gitignored. `config/preferences.json` is legacy and read only by
+- `config/` — legacy, and gitignored except for `.env.example`. It holds a
+  pre-packaging `.env` and `preferences.json` until `migrate.py` folds them
+  in, and is where an older install's Google credential and token files may
+  still sit. Nothing new goes here; `~/.scribejay` is the home. `config/preferences.json` is legacy and read only by
   `migrate.py`; the shipped `persona`/`calendar`/`learnings` defaults live in
   `core/schema.py:STRUCTURED_DEFAULTS`, because `sinks/calendar.py` builds
   `CATEGORY_COLORS` from them at import and a file that fails to load there
@@ -132,9 +150,11 @@ The default backend is a small on-device model; design around it:
   federating dashboard builds run history from those lines, never from exit
   codes, so a task without them reads as *has not run* and one with no
   ending hangs as *running*.
-- **Persistence**: JSON stores under `config/` via `scribejay/core/store.py`
-  (`locked`, `load_json`, `atomic_write_json`); prune on write so polling
-  stores don't grow unbounded.
+- **Persistence**: JSON stores via `scribejay/core/store.py` (`locked`,
+  `load_json`, `atomic_write_json`); prune on write so polling stores don't
+  grow unbounded. A store lives under `~/.scribejay` (via
+  `config.resolve_path`), never beside the source tree — installed as a tool
+  that would be site-packages, which a reinstall wipes.
 - **Config**: read through `config.getenv()` — never `os.getenv` outside the
   seam itself. Every key needs a row in `scribejay/core/schema.py`
   (`tests/test_schema.py` walks the source and fails without one) and a line

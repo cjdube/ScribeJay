@@ -1,18 +1,17 @@
 """Shared pytest fixtures.
 
-Mirrors LocalLLMAgent's tests/conftest.py, scaled down to what ScribeJay
-actually has. ScribeJay owns no dashboard, no opportunities/memory/bg_jobs/
-reminders/mail_state/clickup_watcher/wiki/starred/escalations/games stores,
-and no daemon threads — every fixture in the source conftest that exists to
-guard one of those is simply not needed here.
-What ScribeJay DOES have, and must protect the same way:
+ScribeJay owns no dashboard, no web app and no daemon threads, so it needs no
+fixture guarding any of those. What it DOES have is production state that a
+test can reach and damage, and every one of those channels is guarded here
+suite-wide rather than per-test — a missed convention has to stay harmless:
 
 - Every task calls `setup_logger`, which writes to the real `logs/` dir if
-  left alone. Redirected below, with the same hard-block backstop as Wren's:
-  a missed redirect fails loudly (in the test that caused it) instead of
-  quietly appending fixture rows into the user's real logs.
-- Every learnings/correspondence task writes into the user's real Obsidian
-  vault (LEARNINGS_DIR, CORRESPONDENCE_DIR) unless redirected.
+  left alone. Redirected below, with a hard-block backstop: a missed redirect
+  fails loudly (in the test that caused it) instead of quietly appending
+  fixture rows into the user's real logs.
+- Every learnings/correspondence task writes into the user's real journal and
+  correspondence folders (LEARNINGS_DIR, CORRESPONDENCE_DIR) unless
+  redirected.
 - `notify_failure` POSTs to the real ntfy server and falls back to a real
   Gmail send on a failure path every task's tests exercise on purpose.
   Both egress channels are stubbed suite-wide.
@@ -34,8 +33,8 @@ What ScribeJay DOES have, and must protect the same way:
 - `daily_commits` reads the machine: `sources/git.py` walks PROJECTS_DIR
   (defaulting to the developer's real ~/Projects) and shells out to git for
   every checkout there — including `fetch_repos()`, which runs `git fetch
-  --all`. That is network egress AND a write into real repositories, so it
-  gets the same pin Wren gives its own project scanner.
+  --all`. That is network egress AND a write into real repositories, so
+  PROJECTS_DIR is pinned to a tmp_path for the whole suite.
 """
 
 import logging
@@ -209,7 +208,7 @@ def _isolate_projects_dir(tmp_path, monkeypatch):
     would depend on which repos they happen to have cloned, and would spend a
     few dozen subprocesses per test finding out.
 
-    Unlike Wren's equivalent this is not only about determinism. `fetch_repos()`
+    This is not only about determinism, though. `fetch_repos()`
     runs `git fetch --all` on every checkout it finds — real network egress to
     every configured remote, and a write into the .git directory of the user's
     actual repositories (this checkout among them). That is the one path in
