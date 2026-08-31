@@ -194,6 +194,12 @@ operational lookups, and they stay in the settings file
 ([configuration.md](configuration.md#calendar)). Picking a colour writes both
 `color_id` and `color_name`, so the two cannot drift apart.
 
+**What to leave out** is the other list-shaped panel: the two exclusion lists
+the daily reviews read, one entry per line. A domain must be a bare host — a
+pasted URL is rejected rather than stored where it would never match — and
+domains are lowercased, because the matching is. Both take effect on the next
+scheduled run.
+
 **Credentials are write-only.** A secret field shows `set` or `not set`, never
 the value. Leaving it blank means "leave it alone" — it cannot mean "clear it",
 because the field renders blank on every visit and clearing on blank would

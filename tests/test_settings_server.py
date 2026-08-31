@@ -466,3 +466,69 @@ def test_no_calendar_categories_means_no_colour_tab():
     config.set_preference("calendar", {"categories": []})
     config.flush()
     assert "colors" not in {g.slug for g in settings_form.groups()}
+
+
+# ---- the exclusion lists --------------------------------------------------------
+# Two lists of short strings, edited as one entry per line. What is tested here
+# is the round trip — what the box shows is what `activity.py` reads — and that
+# a domain typed as a URL is refused rather than quietly never matching.
+
+def _learnings():
+    return config.section("learnings")
+
+
+def test_the_exclusions_tab_has_a_box_for_each_list():
+    page = settings_form.render("t")
+    assert 'id="p-exclusions"' in page
+    for name, _, _ in settings_form.EXCLUSION_LISTS:
+        assert f'name="learnings_{name}"' in page
+
+
+def test_a_stored_list_shows_one_entry_per_line():
+    config.set_preference("learnings", {"excluded_domains": ["a.com", "b.com"]})
+    config.flush()
+    assert settings_form.exclusion_lines("excluded_domains") == "a.com\nb.com"
+
+
+def test_saving_splits_lines_and_drops_the_blank_ones():
+    saved, errors = settings_form.apply(
+        {"learnings_excluded_keywords": "  payroll \n\n  divorce\n\n"})
+    assert not errors
+    assert _learnings()["excluded_keywords"] == ["payroll", "divorce"]
+
+
+def test_an_emptied_box_clears_the_list():
+    """Unlike a secret, a blank box here means "exclude nothing" — the value is
+    shown on every visit, so blank is a deliberate answer, not a missing one."""
+    settings_form.apply({"learnings_excluded_keywords": "payroll"})
+    settings_form.apply({"learnings_excluded_keywords": ""})
+    assert _learnings()["excluded_keywords"] == []
+
+
+def test_a_domain_is_lowercased_because_matching_is():
+    settings_form.apply({"learnings_excluded_domains": "SharePoint.COM"})
+    assert _learnings()["excluded_domains"] == ["sharepoint.com"]
+
+
+def test_a_url_is_not_a_domain():
+    """`activity.py` matches the host only, so a pasted URL would sit in the
+    list looking right and never match anything."""
+    saved, errors = settings_form.apply(
+        {"learnings_excluded_domains": "https://sharepoint.com/sites/hr"})
+    assert errors and "bare domain" in errors[0]
+    assert not saved
+
+
+def test_a_rejected_domain_opens_the_exclusions_tab():
+    page = settings_form.render(
+        "t", [], ["Excluded domains: 'x/y' is not a bare domain. Enter just "
+                  "the host, e.g. sharepoint.com."])
+    assert 'id="t-exclusions" checked' in page
+
+
+def test_the_other_list_is_untouched_when_only_one_is_submitted():
+    config.set_preference("learnings", {"excluded_keywords": ["payroll"],
+                                        "excluded_domains": ["a.com"]})
+    config.flush()
+    settings_form.apply({"learnings_excluded_domains": "b.com"})
+    assert _learnings()["excluded_keywords"] == ["payroll"]

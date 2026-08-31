@@ -53,7 +53,7 @@ class Group:
     """
 
     def __init__(self, name: str, label: str, rows: list[schema.Setting],
-                 slug: str, categories: list = ()):
+                 slug: str, structured: str = ""):
         self.name = name
         self.label = label
         # `name` is not unique — core yields three groups — so the tab rail,
@@ -62,15 +62,19 @@ class Group:
         self.accent = ACCENTS.get(slug, DEFAULT_ACCENT)
         self.settings = [s for s in rows if not s.key.startswith("SCRIBEJAY_FEATURE_")]
         self.toggles = [s for s in rows if s.key.startswith("SCRIBEJAY_FEATURE_")]
-        # `(index, entry)` pairs from the calendar section — empty for every
-        # group but the colour table. The index is the position in the *stored*
-        # list, not in this one, so a malformed entry that is not shown is
-        # still not overwritten on save.
-        self.categories = list(categories)
-        # The colour table is a second panel on the google feature, so it takes
-        # the feature name but not the feature list: three Test buttons belong
-        # on the tab that configures the OAuth client, and only there.
-        self.features = ([] if self.categories else
+        # Which structured settings section this panel edits, if any: "" for the
+        # schema-driven groups, "calendar" for the colour table, "learnings" for
+        # the exclusion lists. A structured section is a list, not a value, so
+        # it has no schema rows and gets its own renderer.
+        self.structured = structured
+        # `(index, entry)` pairs from the calendar section. The index is the
+        # position in the *stored* list, not in this one, so a malformed entry
+        # that is not shown is still not overwritten on save.
+        self.categories = calendar_rows() if structured == "calendar" else []
+        # A structured panel borrows a feature's name so `groups()` still covers
+        # exactly `schema.FEATURES`, but not its feature list: the Test buttons
+        # belong on the tab that configures the source, and only there.
+        self.features = ([] if structured else
                          [f for f in features.FEATURES if f.settings_group == name])
 
     def owns_error(self, errors) -> bool:
@@ -82,7 +86,9 @@ class Group:
         is exactly where a rejected value would otherwise hide.
         """
         labels = ([s.label for s in self.settings + self.toggles]
-                  + [c["name"] for _, c in self.categories])
+                  + [c["name"] for _, c in self.categories]
+                  + ([label for _, label, _ in EXCLUSION_LISTS]
+                     if self.structured == "learnings" else []))
         return any(label in text for text in errors for label in labels)
 
 
@@ -109,6 +115,7 @@ DEFAULT_ACCENT = "#888780"
 ACCENTS = {
     "core": "#888780",
     "output": "#1D9E75",
+    "exclusions": "#5F5E5A",
     "model": "#534AB7",
     "google": "#378ADD",
     "colors": "#8E24AA",
@@ -188,6 +195,76 @@ def apply_categories(fields: dict[str, str]) -> tuple[dict | None, list[str]]:
     return section, []
 
 
+# (config key, label, help). The two lists the daily reviews read, in
+# `scribejay/activity.py`. Named here for presentation only — a third exclusion
+# list would be a row in this tuple and nothing else.
+EXCLUSION_LISTS = (
+    ("excluded_keywords", "Excluded keywords",
+     "Subject matter kept out of the reviews entirely, whatever it is hosted "
+     "on. One per line. Matched as a case-insensitive substring against a "
+     "page's title and its path — blunt on purpose, so pick distinctive "
+     "terms; a short or common one will over-match."),
+    ("excluded_domains", "Excluded domains",
+     "Sites kept out of the reviews. One per line, domain only — no https:// "
+     "and no path. A domain covers its subdomains, so sharepoint.com covers "
+     "acme.sharepoint.com, but it is not a substring match: notsharepoint.com "
+     "is still reviewed."),
+)
+
+EXCLUSION_FIELD = "learnings_"
+
+
+def exclusion_lines(name: str) -> str:
+    """The stored list as one entry per line. Non-strings are dropped the same
+    way `activity.py` drops them, so what is shown is what is actually read."""
+    stored = config.section("learnings").get(name, [])
+    if not isinstance(stored, list):
+        return ""
+    return "\n".join(v for v in stored if isinstance(v, str) and v.strip())
+
+
+def apply_exclusions(fields: dict[str, str]) -> tuple[dict | None, list[str]]:
+    """(learnings section to stage, errors). None means nothing was submitted.
+
+    A textarea rather than a row per entry: these are short strings with no
+    fields of their own, and one per line gets adding, removing and reordering
+    for free. Blank lines are dropped rather than rejected — a trailing newline
+    is not a mistake worth an error message.
+    """
+    import copy
+
+    submitted = {name: fields[f"{EXCLUSION_FIELD}{name}"]
+                 for name, _, _ in EXCLUSION_LISTS
+                 if f"{EXCLUSION_FIELD}{name}" in fields}
+    if not submitted:
+        return None, []
+
+    errors = []
+    cleaned = {}
+    for name, label, _ in EXCLUSION_LISTS:
+        if name not in submitted:
+            continue
+        values = [line.strip() for line in submitted[name].splitlines()]
+        values = [v for v in values if v]
+        if name == "excluded_domains":
+            # Lowercased on the way in because `activity.py` lowercases before
+            # matching anyway, and a stored "SharePoint.com" that silently
+            # behaves as "sharepoint.com" is a difference nobody can see.
+            values = [v.lower() for v in values]
+            for v in values:
+                if any(c in v for c in "/: @") or v.startswith("."):
+                    errors.append(f"{label}: '{v}' is not a bare domain. Enter "
+                                  f"just the host, e.g. sharepoint.com.")
+        cleaned[name] = values
+
+    if errors:
+        return None, errors
+
+    section = copy.deepcopy(config.section("learnings"))
+    section.update(cleaned)
+    return section, []
+
+
 def groups() -> list[Group]:
     """Every group with something to show, in schema declaration order — which
     is the order the wizard asks its questions in too."""
@@ -201,16 +278,20 @@ def groups() -> list[Group]:
                 in_section = [r for r in rows if r.section == section]
                 if in_section:
                     result.append(Group(name, label, in_section, section))
+                if section == "output":
+                    # Beside the journal folder, because these decide what
+                    # never reaches it.
+                    result.append(Group(name, "What to leave out", [],
+                                        "exclusions", structured="learnings"))
             continue
         group_features = [f for f in features.FEATURES if f.settings_group == name]
         result.append(Group(name, _label_for(name, group_features), rows, name))
         if name == "google":
             # Beside the calendar it recolours, and only if there is a table to
             # show — a config with no categories gets no empty tab.
-            rows_out = calendar_rows()
-            if rows_out:
+            if calendar_rows():
                 result.append(Group("google", "Event colours", [], "colors",
-                                    categories=rows_out))
+                                    structured="calendar"))
     return result
 
 
@@ -332,6 +413,9 @@ def apply(fields: dict[str, str]) -> tuple[list[str], list[str]]:
     calendar, calendar_errors = apply_categories(fields)
     errors += calendar_errors
 
+    learnings, learnings_errors = apply_exclusions(fields)
+    errors += learnings_errors
+
     if errors:
         return [], errors
 
@@ -339,11 +423,16 @@ def apply(fields: dict[str, str]) -> tuple[list[str], list[str]]:
         config.set_value(setting.key, value)
     if calendar is not None:
         config.set_preference("calendar", calendar)
+    if learnings is not None:
+        config.set_preference("learnings", learnings)
     config.flush()
 
     saved = [f"Saved {len(staged)} setting(s) to {config.config_path()}"]
     if calendar is not None:
         saved.append(f"Saved {len(calendar.get('categories', []))} event colour(s)")
+    if learnings is not None:
+        total = sum(len(learnings.get(n, [])) for n, _, _ in EXCLUSION_LISTS)
+        saved.append(f"Saved {total} exclusion(s)")
 
     # Credentials last, and only after the settings file is on disk: a Keychain
     # write that fails should not also lose the twenty non-secret fields the
@@ -497,6 +586,23 @@ def _categories_html(group: Group) -> str:
             f'in the settings file.</p>{rows}')
 
 
+def _exclusions_html() -> str:
+    blocks = ""
+    for name, label, help_text in EXCLUSION_LISTS:
+        key = f"{EXCLUSION_FIELD}{name}"
+        value = html.escape(exclusion_lines(name))
+        count = len([v for v in value.splitlines() if v])
+        blocks += (f'<div class="row"><label for="{key}">{label} '
+                   f'<span class="state not-set">{count}</span></label>'
+                   f'<textarea name="{key}" id="{key}" rows="7" spellcheck="false"'
+                   f' autocomplete="off">{value}</textarea>'
+                   f'<p class="help">{html.escape(help_text)}</p>'
+                   f'<code class="key">learnings.{name}</code></div>')
+    return (f'<p class="help">What the daily reviews skip, so it never reaches '
+            f'the journal folder. One entry per line; blank lines are ignored. '
+            f'Takes effect on the next scheduled run.</p>{blocks}')
+
+
 def _group_html(group: Group) -> str:
     states = ""
     for feature in group.features:
@@ -510,8 +616,11 @@ def _group_html(group: Group) -> str:
                    f'<span class="result" id="r-{html.escape(feature.name)}"></span>'
                    f'</li>')
 
-    fields = ("".join(_field(s) for s in group.settings + group.toggles)
-              or (_categories_html(group) if group.categories else ""))
+    fields = "".join(_field(s) for s in group.settings + group.toggles)
+    if group.structured == "calendar":
+        fields = _categories_html(group)
+    elif group.structured == "learnings":
+        fields = _exclusions_html()
     feature_list = f'<ul class="features">{states}</ul>' if states else ""
     # Every panel is rendered, always. The inactive ones are hidden in CSS
     # rather than left out, because this is one form and one POST: a field the
@@ -665,9 +774,12 @@ header p { opacity: .75; margin: 0 0 1rem; }
 }
 .row { margin: 0 0 1.1rem; }
 label { display: block; font-weight: 600; margin-bottom: .2rem; }
-input, select { width: 100%; padding: .4rem; font: inherit;
+input, select, textarea { width: 100%; padding: .4rem; font: inherit;
                 border: 1px solid var(--line); border-radius: 5px;
                 background: transparent; color: inherit; }
+/* One entry per line, so a monospace face makes a stray space visible. */
+textarea { font: .9rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+           resize: vertical; }
 .help { margin: .25rem 0 0; font-size: .85rem; opacity: .75; }
 .key { font-size: .75rem; opacity: .5; }
 .cat { display: grid; grid-template-columns: 1rem minmax(0, 1fr) 10rem;

@@ -63,11 +63,14 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   `core/registry.py` — never a hand-kept list, or the screen drifts from what
   the code reads. Naming a key for *presentation* is fine and already
   happens: `FILE_PATH_KEYS` and the `TIMEZONE` widget are special cases in
-  the renderer, not extra fields. The Event colours tab is the one panel with
-  no schema rows behind it — a structured section is a list, not a value — but
-  it is still derived, from `config.section("calendar")` and
-  `schema.GOOGLE_EVENT_COLORS`, and it edits only the colour: `name`, `hint`
-  and `role` stay file-only.
+  the renderer, not extra fields. The two structured tabs — Event colours and
+  What to leave out — have no schema rows behind them, because a structured
+  section is a list, not a value. They are still derived: colours from
+  `config.section("calendar")` and `schema.GOOGLE_EVENT_COLORS`, exclusions
+  from `config.section("learnings")` and the `EXCLUSION_LISTS` tuple. Both
+  edit a subset on purpose — a category's `name`, `hint` and `role` stay
+  file-only, because one wrong `role` silently changes which colour Strava
+  activities are logged with.
 
   `cli/init.py` and `cli/doctor.py` do name individual settings, because
   asking a question and checking a specific thing both require knowing which

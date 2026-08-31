@@ -198,6 +198,10 @@ its subdomains** (`sharepoint.com` covers `acme.sharepoint.com`), not a
 substring (`notsharepoint.com` is kept). Ports are stripped before matching. An
 empty list excludes nothing.
 
+Both lists are editable on the **What to leave out** tab in
+`scribejay settings`, one entry per line. Everything else in this section stays
+file-only.
+
 A service's own domain is not always enough: a Salesforce-backed portal can
 serve from both `<org>.my.site.com` and `<org>.my.salesforce.com`, and both
 need listing. After adding an entry, check a real day against it — see the
