@@ -33,6 +33,9 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   `core/features.py` says which sources the user wants and
   `core/registry.py` maps tasks to the features they need
   ([docs/features.md](docs/features.md)).
+  `core/usage_ledger.py` hangs off that same `core/model.py` choke point: one
+  JSON line per model call into `logs/usage.jsonl`, written here and read only
+  from outside this repo ([docs/usage-ledger.md](docs/usage-ledger.md)).
 - `scribejay/sources/` — read-only fetchers: `calendar`, `chrome`, `clickup`,
   `git`, `gmail_sent`, `strava`, `transcripts`, `youtube`.
 - `scribejay/sinks/` — write-only: `calendar` (log an event, recolor one),

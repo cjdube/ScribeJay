@@ -107,9 +107,21 @@ def _gemini_chat(
             output_tokens = getattr(um, "candidates_token_count", None) or output_tokens
             thinking_tokens = getattr(um, "thoughts_token_count", None) or thinking_tokens
 
-    message: dict = {"role": "assistant", "content": "".join(content_parts)}
+    reason = str(finish_reason) if finish_reason is not None else None
+    message: dict = {
+        "role": "assistant",
+        "content": "".join(content_parts),
+        # Private, and popped by core/model.py:_llm_chat before the message
+        # reaches a caller.
+        "_usage": {
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "output_tokens": output_tokens,
+            "thinking_tokens": thinking_tokens,
+            "finish_reason": reason,
+        },
+    }
     if logger:
-        reason = str(finish_reason) if finish_reason is not None else None
         logger.info(
             "gemini_chat model=%s prompt_tokens=%s output_tokens=%s "
             "thinking_tokens=%s finish_reason=%s",

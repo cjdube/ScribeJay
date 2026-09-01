@@ -126,6 +126,22 @@ SETTINGS: tuple[Setting, ...] = (
         default_under_config_home="logs",
     ),
     Setting(
+        key="SCRIBEJAY_USAGE_MAX_BYTES", section="core", name="usage_max_bytes",
+        label="Usage ledger size trigger", type="int",
+        help="How big logs/usage.jsonl — one line per model call — may grow "
+             "before a write prunes it. Size is only the trigger; the rule is "
+             "the retention window below.",
+        default="5000000",
+    ),
+    Setting(
+        key="SCRIBEJAY_USAGE_RETENTION_DAYS", section="core",
+        name="usage_retention_days",
+        label="Usage ledger retention (days)", type="int",
+        help="How much model-call history the usage ledger keeps once a prune "
+             "is triggered. Rows older than this are dropped.",
+        default="90",
+    ),
+    Setting(
         key="LEARNINGS_DIR", section="output", name="learnings_dir", type="path",
         label="Journal folder",
         help="Where the daily pages are written — a plain folder or an "

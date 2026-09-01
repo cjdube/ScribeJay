@@ -46,7 +46,45 @@ def test_returns_the_canonical_message_shape(monkeypatch):
 
     message = openrouter._openrouter_chat([{"role": "user", "content": "hey"}])
 
-    assert message == {"role": "assistant", "content": "Hello"}
+    assert message["role"] == "assistant"
+    assert message["content"] == "Hello"
+    # Plus the private "_usage" key core/model.py:_llm_chat pops off before any
+    # caller sees the dict — asserted on its own below.
+    assert set(message) == {"role", "content", "_usage"}
+
+
+def test_usage_carries_the_served_model_not_the_slug_asked_for(monkeypatch):
+    """A `:floor`/auto route can land somewhere else, and a cost table keyed on
+    the request would then price a model that never ran."""
+    _patch_post(monkeypatch, _reply(model="google/gemini-2.5-flash"))
+
+    message = openrouter._openrouter_chat(
+        [{"role": "user", "content": "hey"}], model="anthropic/claude-sonnet-5:floor")
+
+    assert message["_usage"]["model"] == "google/gemini-2.5-flash"
+
+
+def test_usage_falls_back_to_the_requested_slug(monkeypatch):
+    reply = _reply()
+    del reply["model"]
+    _patch_post(monkeypatch, reply)
+
+    message = openrouter._openrouter_chat(
+        [{"role": "user", "content": "hey"}], model="anthropic/claude-sonnet-5")
+
+    assert message["_usage"]["model"] == "anthropic/claude-sonnet-5"
+
+
+def test_usage_maps_completion_tokens_onto_output_tokens(monkeypatch):
+    """OpenRouter says `completion_tokens`; the ledger field is
+    `output_tokens`."""
+    _patch_post(monkeypatch, _reply(finish_reason="length"))
+
+    usage = openrouter._openrouter_chat([{"role": "user", "content": "hey"}])["_usage"]
+
+    assert usage["prompt_tokens"] == 11
+    assert usage["output_tokens"] == 4
+    assert usage["finish_reason"] == "length"
 
 
 def test_messages_pass_through_unchanged(monkeypatch):

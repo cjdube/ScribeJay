@@ -187,6 +187,8 @@ python3 -m venv .venv
   model copy an id
 - [docs/ntfy-setup.md](docs/ntfy-setup.md) — the push-alert server
 - [docs/logs.md](docs/logs.md) — where each job's logs live
+- [docs/usage-ledger.md](docs/usage-ledger.md) — the per-model-call record of
+  tokens, duration and estimated cost
 
 One page per job, for when a page reads wrong and you want to know why:
 

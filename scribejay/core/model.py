@@ -29,7 +29,7 @@ from typing import Optional
 
 import requests
 
-from scribejay.core import config
+from scribejay.core import config, usage_ledger
 from scribejay.core.backends.gemini import GEMINI_DEFAULT_MODEL, _gemini_chat
 from scribejay.core.backends.openrouter import _openrouter_chat
 
@@ -210,7 +210,7 @@ def _ollama_chat(
         payload["think"] = think
 
     content_parts: list[str] = []
-    prompt_tokens = eval_tokens = None
+    prompt_tokens = eval_tokens = done_reason = None
     got_bytes = False
     t0 = time.monotonic()
     try:
@@ -228,13 +228,25 @@ def _ollama_chat(
                 if chunk.get("done"):
                     prompt_tokens = chunk.get("prompt_eval_count")
                     eval_tokens = chunk.get("eval_count")
+                    done_reason = chunk.get("done_reason")
     except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
         detail = _diagnose_stall(host, got_bytes, time.monotonic() - t0)
         if logger:
             logger.warning("ollama_chat stalled: %s", detail)
         raise OllamaUnavailable(detail) from e
 
-    message: dict = {"role": "assistant", "content": "".join(content_parts)}
+    message: dict = {
+        "role": "assistant",
+        "content": "".join(content_parts),
+        # Private, and popped by _llm_chat before the message reaches a caller.
+        "_usage": {
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "output_tokens": eval_tokens,
+            "num_ctx": num_ctx,
+            "finish_reason": done_reason,
+        },
+    }
     if logger:
         logger.info(
             "ollama_chat model=%s num_ctx=%d prompt_tokens=%s eval_tokens=%s",
@@ -314,19 +326,49 @@ def _llm_chat(
     returning the same canonical `message` dict shape regardless of
     provider."""
     b = _resolve_backend(backend)
-    if b == "ollama":
-        message = _ollama_chat(messages, model=model, host=host, timeout=timeout,
-                               logger=logger, think=think)
-    elif b in ("gemini", "google"):
-        message = _gemini_chat(messages, model=model, timeout=timeout,
-                               logger=logger, think=think)
-    elif b == "openrouter":
-        message = _openrouter_chat(messages, model=model, timeout=timeout,
+    # setup_logger names each logger after its task, so this is the task name.
+    task = getattr(logger, "name", None)
+    t0 = time.monotonic()
+    try:
+        if b == "ollama":
+            message = _ollama_chat(messages, model=model, host=host, timeout=timeout,
                                    logger=logger, think=think)
-    else:
-        raise ValueError(
-            f"unknown SCRIBEJAY_LLM_BACKEND {b!r} "
-            f"(expected 'ollama', 'gemini' or 'openrouter')")
+        elif b in ("gemini", "google"):
+            message = _gemini_chat(messages, model=model, timeout=timeout,
+                                   logger=logger, think=think)
+        elif b == "openrouter":
+            message = _openrouter_chat(messages, model=model, timeout=timeout,
+                                       logger=logger, think=think)
+        else:
+            raise ValueError(
+                f"unknown SCRIBEJAY_LLM_BACKEND {b!r} "
+                f"(expected 'ollama', 'gemini' or 'openrouter')")
+    except Exception as e:
+        # A failed call is a call: it cost wall clock and, on a cloud backend,
+        # possibly tokens. Record it, then let it propagate unchanged.
+        usage_ledger.record(
+            task, b, model,
+            duration_ms=int((time.monotonic() - t0) * 1000),
+            caller="complete_text",
+            ok=False,
+            error=f"{e.__class__.__name__}: {e}",
+        )
+        raise
+    # POP, not get: `_usage` is private to this seam, and callers get this dict
+    # verbatim.
+    usage = message.pop("_usage", None) or {}
+    usage_ledger.record(
+        task, b, usage.get("model") or model,
+        prompt_tokens=usage.get("prompt_tokens"),
+        output_tokens=usage.get("output_tokens"),
+        thinking_tokens=usage.get("thinking_tokens"),
+        num_ctx=usage.get("num_ctx"),
+        duration_ms=int((time.monotonic() - t0) * 1000),
+        finish_reason=usage.get("finish_reason"),
+        # complete_text is the only entry point here. Add another value if a
+        # second one ever appears.
+        caller="complete_text",
+    )
     content = _strip_think_markup(message.get("content") or "")
     message["content"] = _latex_to_unicode(content)
     return message

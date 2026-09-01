@@ -550,3 +550,65 @@ def test_think_markup_and_latex_are_both_applied(monkeypatch):
     _llm_returning("<think>scratch</think>Lead $\\rightarrow$ Proposal.", monkeypatch)
 
     assert model.complete_text("sys", "user") == "Lead → Proposal."
+
+
+# --------------------------------------------------------------------------- #
+# usage ledger — _llm_chat is the one seam every backend passes through
+# --------------------------------------------------------------------------- #
+
+def test_llm_chat_records_a_usage_row_and_pops_the_private_key(monkeypatch):
+    """Two promises in one test on purpose: a row is written AND `_usage` is
+    stripped off the message. Tested apart, the pop half stays green forever
+    because a missing row makes the assertion vacuous."""
+    rows = []
+    monkeypatch.setattr(model.usage_ledger, "record",
+                        lambda *a, **kw: rows.append((a, kw)))
+    _patch_post(
+        monkeypatch, {},
+        {"message": {"content": "hi"}, "prompt_eval_count": 123, "eval_count": 45},
+    )
+    logger = logging.getLogger("daily_chrome_learnings")
+
+    message = model._llm_chat([{"role": "user", "content": "hey"}], logger=logger)
+
+    assert rows, "no usage row written"
+    args, kwargs = rows[0]
+    assert args == ("daily_chrome_learnings", "ollama", "gemma4")
+    assert kwargs["prompt_tokens"] == 123
+    assert kwargs["output_tokens"] == 45
+    assert kwargs["num_ctx"] == 8192
+    assert kwargs["caller"] == "complete_text"
+    assert "_usage" not in message
+
+
+def test_llm_chat_records_the_ollama_done_reason(monkeypatch):
+    rows = []
+    monkeypatch.setattr(model.usage_ledger, "record",
+                        lambda *a, **kw: rows.append(kw))
+    _patch_post_chunks(monkeypatch, {}, [
+        {"message": {"content": "hi"}, "done": True,
+         "prompt_eval_count": 1, "eval_count": 2, "done_reason": "length"},
+    ])
+
+    model._llm_chat([{"role": "user", "content": "hey"}])
+
+    assert rows[0]["finish_reason"] == "length"
+
+
+def test_llm_chat_records_a_failed_call_then_re_raises(monkeypatch):
+    rows = []
+    monkeypatch.setattr(model.usage_ledger, "record",
+                        lambda *a, **kw: rows.append((a, kw)))
+
+    def boom(*a, **kw):
+        raise model.OllamaUnavailable("Ollama looks down")
+
+    monkeypatch.setattr(model, "_ollama_chat", boom)
+
+    with pytest.raises(model.OllamaUnavailable):
+        model._llm_chat([{"role": "user", "content": "hey"}])
+
+    assert rows, "no usage row written for the failed call"
+    kwargs = rows[0][1]
+    assert kwargs["ok"] is False
+    assert kwargs["error"] == "OllamaUnavailable: Ollama looks down"

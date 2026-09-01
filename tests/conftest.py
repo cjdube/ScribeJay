@@ -17,6 +17,8 @@ suite-wide rather than per-test — a missed convention has to stay harmless:
   Both egress channels are stubbed suite-wide.
 - `ai_chat_learnings` has its own dedup store (STATE_PATH) and reads real
   `~/.claude` / `~/.codex` / Gemini-drop-folder paths off disk.
+- `core/usage_ledger.py` appends a row to logs/usage.jsonl on every model
+  call, and drops a .lock sidecar beside it. Redirected below.
 - ClickUp and Gemini are both live network egress the suite must never reach.
 - `core/config.py` reads the user's real ~/.scribejay/config.json AND their
   real config/.env at import — and the .env is the top resolution layer, so
@@ -64,6 +66,7 @@ os.environ["SCRIBEJAY_ENV_FILE"] = str(_TEST_CONFIG_DIR / "absent.env")
 from scribejay.core import config as _config  # noqa: E402
 from scribejay.core import features as _features  # noqa: E402
 from scribejay.core import logs as _logs  # noqa: E402
+from scribejay.core import usage_ledger as _usage_ledger  # noqa: E402
 from scribejay.core import secrets as _secrets  # noqa: E402
 from scribejay.core import notify as _notify  # noqa: E402
 from scribejay.core.backends import gemini as _gemini_backend  # noqa: E402
@@ -85,6 +88,12 @@ _REAL_LOGS_DIR = Path(_logs.__file__).resolve().parent.parent.parent / "logs"
 _TEST_LOGS_DIR = Path(tempfile.mkdtemp(prefix="scribejay-test-logs-"))
 os.environ["SCRIBEJAY_LOGS_DIR"] = str(_TEST_LOGS_DIR)
 _logs.LOGS_DIR = _TEST_LOGS_DIR
+# Same treatment for the usage ledger, which lives in the same directory and is
+# written on every model call. It binds LEDGER_PATH at import, and the imports
+# above run before the env var line, so setting the env alone would be too
+# late: the module already resolved the real logs/ dir.
+_usage_ledger.LOGS_DIR = _TEST_LOGS_DIR
+_usage_ledger.LEDGER_PATH = _TEST_LOGS_DIR / "usage.jsonl"
 
 
 def _forbid_production_log_handlers() -> None:
@@ -126,6 +135,10 @@ def _isolate_task_logs(tmp_path, monkeypatch):
     # invisible to the FileHandler guard above: setup_logger trims
     # <task>.launchd.log in place, through this same LOGS_DIR.
     monkeypatch.setenv("SCRIBEJAY_LOGS_DIR", str(tmp_path))
+    # Both attributes, because record() reads LEDGER_PATH and _prune_if_large
+    # is handed that same path.
+    monkeypatch.setattr(_usage_ledger, "LOGS_DIR", tmp_path)
+    monkeypatch.setattr(_usage_ledger, "LEDGER_PATH", tmp_path / "usage.jsonl")
 
 
 @pytest.fixture(autouse=True)

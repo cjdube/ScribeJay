@@ -118,3 +118,22 @@ def test_gemini_model_defaults_and_is_env_overridable(monkeypatch):
     captured2 = _patch_gemini(monkeypatch, [_FakeChunk(parts=[_FakePart(text="ok")])])
     gemini_backend._gemini_chat([{"role": "user", "content": "hey"}])
     assert captured2["calls"][0]["model"] == "gemini-3.6-flash"
+
+
+def test_gemini_attaches_usage_for_the_ledger(monkeypatch):
+    """The private key core/model.py:_llm_chat pops off and records."""
+    usage = _FakeUsage(5, 3)
+    usage.thoughts_token_count = 11
+    chunk = _FakeChunk(parts=[_FakePart(text="Hi")], usage=usage)
+    chunk.candidates[0].finish_reason = "MAX_TOKENS"
+    _patch_gemini(monkeypatch, [chunk])
+
+    message = gemini_backend._gemini_chat([{"role": "user", "content": "hey"}])
+
+    assert message["_usage"] == {
+        "model": "gemini-2.5-flash",
+        "prompt_tokens": 5,
+        "output_tokens": 3,
+        "thinking_tokens": 11,
+        "finish_reason": "MAX_TOKENS",
+    }

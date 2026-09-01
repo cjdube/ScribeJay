@@ -101,7 +101,20 @@ def _openrouter_chat(
     finish_reason = choice.get("finish_reason")
     usage = data.get("usage") or {}
 
-    message: dict = {"role": "assistant", "content": content}
+    message: dict = {
+        "role": "assistant",
+        "content": content,
+        # Private, and popped by core/model.py:_llm_chat before the message
+        # reaches a caller. `served` is recorded rather than the slug asked
+        # for: a `:floor`/auto route can land somewhere else, and a cost table
+        # keyed on the request would then price a model that never ran.
+        "_usage": {
+            "model": data.get("model") or model,
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "output_tokens": usage.get("completion_tokens"),
+            "finish_reason": finish_reason,
+        },
+    }
     if logger:
         # `served` is what OpenRouter actually routed to, which is not always
         # the slug asked for (a `:floor`/auto route, or a fallback). The

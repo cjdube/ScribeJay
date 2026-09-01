@@ -17,6 +17,10 @@ config/*.lock
 config/*.corrupt-*
 logs/*.log
 logs/*.log.bak
+# Not covered by the two rules above: *.log* does not match .jsonl, and the
+# config/*.lock rule does not reach logs/.
+logs/usage.jsonl
+logs/*.lock
 .DS_Store
 .claude/
 .codex/
