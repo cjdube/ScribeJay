@@ -16,7 +16,7 @@ DEFAULT_LEARNINGS_DIR = str(Path.home() / "Documents" / "ScribeJay")
 
 
 def _learnings_dir() -> Path:
-    return Path(config.getenv("LEARNINGS_DIR", DEFAULT_LEARNINGS_DIR)).expanduser()
+    return config.resolve_path(config.getenv("LEARNINGS_DIR", DEFAULT_LEARNINGS_DIR))
 
 
 def write_entry(content: str, prefix: str, day, directory: str | Path | None = None) -> dict:

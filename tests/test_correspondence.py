@@ -208,3 +208,12 @@ def test_the_directory_is_not_the_vault_ingest_queue(monkeypatch):
 def test_the_directory_is_configurable(monkeypatch):
     monkeypatch.setenv("CORRESPONDENCE_DIR", "/tmp/elsewhere")
     assert str(co._correspondence_dir()) == "/tmp/elsewhere"
+
+
+def test_correspondence_dir_resolves_a_relative_setting_under_the_config_dir(monkeypatch, tmp_path):
+    """CORRESPONDENCE_DIR is a type="path" row: a relative value resolves
+    against the config dir, not the process's working directory."""
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("CORRESPONDENCE_DIR", "letters-under-config")
+
+    assert co._correspondence_dir() == tmp_path / "letters-under-config"

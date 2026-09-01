@@ -446,3 +446,16 @@ def test_fetch_can_never_sit_waiting_for_a_password(projects, monkeypatch):
     assert seen["env"]["GIT_TERMINAL_PROMPT"] == "0"
     assert "BatchMode=yes" in seen["env"]["GIT_SSH_COMMAND"]
     assert seen["timeout"] == ga.FETCH_TIMEOUT
+
+
+def test_projects_dir_resolves_a_relative_setting_under_the_config_dir(monkeypatch, tmp_path):
+    """PROJECTS_DIR is the case that proved the rule.
+
+    features.configured("git") probes this setting through config.resolve_path
+    while the reader used Path(value), so a relative setting made the feature
+    report "on" and the fetch find no repositories at all.
+    """
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("PROJECTS_DIR", "repos-under-config")
+
+    assert ga._projects_dir() == tmp_path / "repos-under-config"

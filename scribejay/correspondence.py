@@ -37,7 +37,7 @@ def _correspondence_dir() -> Path:
     anything dropped there becomes an asserted wiki page — which would turn the
     people he emails and the companies they work for into wiki entities. A record
     of who he wrote to is a diary, so it gets its own directory outside the queue."""
-    return Path(config.getenv("CORRESPONDENCE_DIR", DEFAULT_CORRESPONDENCE_DIR)).expanduser()
+    return config.resolve_path(config.getenv("CORRESPONDENCE_DIR", DEFAULT_CORRESPONDENCE_DIR))
 
 
 def _recipients(row: dict) -> list:

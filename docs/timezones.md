@@ -50,6 +50,7 @@ makes it worth a rule rather than a code comment.
 |---|---|
 | Chrome history | Day boundaries resolved in UTC, not local. Fixed by resolving the window through the shared `local_timezone()` rather than a private copy. |
 | YouTube Likes | The API stamps `publishedAt` in UTC. A video Liked at 9:20pm EDT carries the *next* UTC date, so windowing on the raw stamp dropped every evening Like — and the next day's run attributed it to the wrong day. |
+| Strava | `.astimezone()` with no argument and a naive `datetime.now()` used the *machine's* zone, so `TIMEZONE` was ignored. `strava_download` then wrote that wall clock into a calendar event labelled with the configured zone — an hour offset on every ride, and a date offset on a late one. |
 
 The YouTube case is the clearest illustration: Liking something at 9:20pm on
 Jul 13 local stamps `2026-07-14T01:20:00Z`. The Jul 13 run dropped it. The Jul 14
@@ -67,8 +68,8 @@ and tasks need the same answer, so none of them roll their own.
 - Falls back to `"UTC"` if the path can't be resolved.
 
 Callers include `scribejay/sources/chrome.py`, `scribejay/sources/youtube.py`,
-`scribejay/sources/gmail_sent.py`, `scribejay/calendar_colorizer.py` and
-`scribejay/claude_time_blocks.py`.
+`scribejay/sources/gmail_sent.py`, `scribejay/sources/strava.py`,
+`scribejay/calendar_colorizer.py` and `scribejay/claude_time_blocks.py`.
 
 Gmail is a variation on the same rule rather than an exception to it:
 `daily_correspondence` sends its window as **epoch seconds**, because Gmail's
@@ -99,7 +100,13 @@ _item("EVENING", "2026-07-14T01:20:00Z")  # 9:20pm Jul 13 local
 
 Suites already doing this: `tests/test_youtube.py`, `tests/test_chrome.py`,
 `tests/test_dates.py`, `tests/test_clickup.py`, `tests/test_calendar_write.py`,
-`tests/test_claude_time_blocks.py`.
+`tests/test_claude_time_blocks.py`, `tests/test_strava.py`.
+
+**Pin a zone the host does not have.** The Strava fix was first written with a
+test pinned to `America/New_York`, on a Mac set to `America/New_York` — so the
+broken call and the fixed one gave the same answer and the test passed against
+the bug. A fixture zone far from both UTC and your own is the only one that
+proves the setting is being read.
 
 ## Checklist for a new source
 

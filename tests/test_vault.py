@@ -59,3 +59,18 @@ def test_persist_write_and_email_both_failing_raises(spy, monkeypatch):
     monkeypatch.setattr(lc, "send_email", lambda subject, body: {"error": "gmail 503"})
     with pytest.raises(RuntimeError, match="both failed"):
         lc.persist_or_email("body", "Daily-Chrome", date(2026, 7, 12), "subj", "daily_chrome_learnings", _LOG)
+
+
+def test_learnings_dir_resolves_a_relative_setting_under_the_config_dir(monkeypatch, tmp_path):
+    """LEARNINGS_DIR is a type="path" row, so a relative value means "beside the
+    checkout, or under ~/.scribejay" — never "relative to whatever directory
+    launchd happened to start the job in", which is what Path(value) gave.
+
+    This is the pairing that made it matter: `doctor` probes the same setting
+    through config.resolve_path, so before the fix the health check and the
+    writer could report on two different folders.
+    """
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("LEARNINGS_DIR", "vault-under-config")
+
+    assert lc._learnings_dir() == tmp_path / "vault-under-config"

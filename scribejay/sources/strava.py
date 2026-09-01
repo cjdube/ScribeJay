@@ -22,10 +22,11 @@ import sys
 import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import requests
 
-from scribejay.core.dates import resolve_date
+from scribejay.core.dates import local_timezone, resolve_date
 from scribejay.core.http import load_env, print_result, resolve_key
 
 load_env()
@@ -71,8 +72,12 @@ def _get_activities(
 
     access_token = _get_access_token(client_id, client_secret, refresh_token)
 
-    cutoff_date = (datetime.now() - timedelta(days=days_back)).date()
-    after_epoch = int(datetime.combine(cutoff_date, datetime.min.time()).timestamp())
+    # Strava stamps start_date in UTC; our day windows are local. Use the
+    # configured zone, not the machine's, or a TIMEZONE that differs from the
+    # Mac's puts a ride on the calendar at the wrong hour. docs/timezones.md
+    tz = ZoneInfo(local_timezone())
+    cutoff_date = (datetime.now(tz) - timedelta(days=days_back)).date()
+    after_epoch = int(datetime.combine(cutoff_date, datetime.min.time(), tzinfo=tz).timestamp())
 
     response = requests.get(
         _ACTIVITIES_URL,
@@ -92,7 +97,7 @@ def _get_activities(
         start_dt = activity_date = end_dt = None
         if start_date_str:
             try:
-                start_dt = datetime.fromisoformat(start_date_str.replace("Z", "+00:00")).astimezone()
+                start_dt = datetime.fromisoformat(start_date_str.replace("Z", "+00:00")).astimezone(tz)
                 activity_date = start_dt.date()
                 end_dt = start_dt + timedelta(seconds=elapsed_seconds)
             except ValueError:
@@ -125,7 +130,10 @@ def fetch_strava(
     strava_refresh_token: str = None,
 ) -> dict:
     """Callable entrypoint used by the daily jobs."""
-    target_date = resolve_date(date)
+    # today= pinned to the configured zone: a bare "yesterday" resolved from a
+    # naive datetime.now() would name a different day than the one
+    # _get_activities buckets each activity into.
+    target_date = resolve_date(date, today=datetime.now(ZoneInfo(local_timezone())).date())
 
     try:
         activities = _get_activities(strava_client_id, strava_client_secret, strava_refresh_token)

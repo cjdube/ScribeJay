@@ -54,7 +54,7 @@ _FIELD = "\x1f"
 
 
 def _projects_dir() -> Path:
-    return Path(config.getenv("PROJECTS_DIR", DEFAULT_PROJECTS_DIR)).expanduser()
+    return config.resolve_path(config.getenv("PROJECTS_DIR", DEFAULT_PROJECTS_DIR))
 
 
 def _git(path: Path, *args: str) -> subprocess.CompletedProcess:

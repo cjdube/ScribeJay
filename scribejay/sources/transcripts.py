@@ -33,8 +33,8 @@ from scribejay.core import config
 
 def claude_projects_dir() -> Path:
     """Claude Code's session root, including its supported config override."""
-    root = Path(config.getenv("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
-    return root.expanduser() / "projects"
+    root = config.getenv("CLAUDE_CONFIG_DIR") or str(Path.home() / ".claude")
+    return config.resolve_path(root) / "projects"
 
 
 # Module-level so tests can redirect them away from the real session stores.
@@ -86,8 +86,8 @@ def _is_excluded_project(dir_name: str, prefix: str) -> bool:
 
 def codex_sessions_dir() -> Path:
     """Codex's local session root, including its existing home override."""
-    root = Path(config.getenv("CODEX_HOME") or (Path.home() / ".codex"))
-    return root.expanduser() / "sessions"
+    root = config.getenv("CODEX_HOME") or str(Path.home() / ".codex")
+    return config.resolve_path(root) / "sessions"
 
 
 CODEX_SESSIONS_DIR = codex_sessions_dir()
@@ -580,10 +580,10 @@ def fetch_session_activity(start: datetime, end: datetime) -> list[dict]:
 
 
 def gemini_dir() -> Path:
-    # expanduser: .env.example documents this as a ~-prefixed path, and without
-    # expansion a literal "~/..." dir never exists — fetch_gemini_chats would
-    # silently return [] forever rather than reading the drop folder.
-    return Path(config.getenv("SCRIBEJAY_GEMINI_CHATS_DIR", DEFAULT_GEMINI_DIR)).expanduser()
+    # resolve_path expands ~: .env.example documents this as a ~-prefixed path,
+    # and without expansion a literal "~/..." dir never exists — fetch_gemini_chats
+    # would silently return [] forever rather than reading the drop folder.
+    return config.resolve_path(config.getenv("SCRIBEJAY_GEMINI_CHATS_DIR", DEFAULT_GEMINI_DIR))
 
 
 def fetch_gemini_chats(processed: dict, max_chars: int = DEFAULT_MAX_CHARS) -> list[dict]:

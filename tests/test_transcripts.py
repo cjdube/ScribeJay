@@ -445,3 +445,19 @@ def test_the_exclusion_follows_the_configured_path(monkeypatch):
         ["some-build-92e15ff5"]
     assert [e["project"] for e in ct.fetch_session_activity(START, END)] == \
         ["some-build-92e15ff5"]
+
+
+def test_transcript_dirs_resolve_relative_settings_under_the_config_dir(monkeypatch, tmp_path):
+    """All three transcript roots are type="path" rows.
+
+    Each is read as a directory the job walks, so a value resolved against the
+    working directory returns nothing and looks exactly like a quiet day.
+    """
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "claude-under-config")
+    monkeypatch.setenv("CODEX_HOME", "codex-under-config")
+    monkeypatch.setenv("SCRIBEJAY_GEMINI_CHATS_DIR", "gemini-under-config")
+
+    assert ct.claude_projects_dir() == tmp_path / "claude-under-config" / "projects"
+    assert ct.codex_sessions_dir() == tmp_path / "codex-under-config" / "sessions"
+    assert ct.gemini_dir() == tmp_path / "gemini-under-config"
