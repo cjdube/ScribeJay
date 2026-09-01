@@ -29,12 +29,24 @@ import logging
 import os
 import subprocess
 
+from scribejay.core import config
+
 logger = logging.getLogger(__name__)
 
-# One service for all of ScribeJay's items; the account name is the setting key
-# (e.g. STRAVA_CLIENT_SECRET), so `security` shows a readable row in Keychain
-# Access. Overridable so a second install — or a test — can use its own bucket.
-SERVICE = os.getenv("SCRIBEJAY_KEYCHAIN_SERVICE", "com.scribejay")
+
+def service() -> str:
+    """The Keychain service every ScribeJay item is filed under.
+
+    One service for all of them; the account name is the setting key (e.g.
+    STRAVA_CLIENT_SECRET), so `security` shows a readable row in Keychain
+    Access. Overridable so a second install can use its own bucket.
+
+    A function, and read through config.getenv rather than os.getenv: a module
+    constant answered once at import, which no settings file could reach and
+    which the schema's drift guard could not see — that guard walks
+    config.getenv call sites, so a key read any other way is invisible to it.
+    """
+    return config.getenv("SCRIBEJAY_KEYCHAIN_SERVICE")
 
 _SECURITY = "/usr/bin/security"
 
@@ -74,7 +86,7 @@ def get(name: str) -> str | None:
     `-w` prints just the password to stdout. Exit code 44 is
     errSecItemNotFound, the ordinary "you never set this" answer; anything else
     non-zero is worth a debug line but is still just None to the caller."""
-    result = _run(["find-generic-password", "-s", SERVICE, "-a", name, "-w"])
+    result = _run(["find-generic-password", "-s", service(), "-a", name, "-w"])
     if result is None:
         return None
     if result.returncode != 0:
@@ -95,7 +107,7 @@ def set(name: str, value: str) -> bool:
         return False
     result = _run([
         "add-generic-password",
-        "-s", SERVICE,
+        "-s", service(),
         "-a", name,
         "-U",
         "-D", "ScribeJay credential",
@@ -111,7 +123,7 @@ def set(name: str, value: str) -> bool:
 def delete(name: str) -> bool:
     """Remove the stored secret for `name`. Missing is success — the caller
     asked for it to be gone, and it is."""
-    result = _run(["delete-generic-password", "-s", SERVICE, "-a", name])
+    result = _run(["delete-generic-password", "-s", service(), "-a", name])
     if result is None:
         return False
     return result.returncode in (0, 44)

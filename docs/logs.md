@@ -30,8 +30,15 @@ first when a job looks like it never ran at all.
 ## Bounds
 
 `<task>.log` is capped at 2 MB × 3 backups (~8 MB) — `setup_logger` rotates it,
-so it can't grow without bound. `<task>.launchd.log` has no rotation and grows
-forever; nothing in this repo currently prunes it.
+so it can't grow without bound.
+
+`<task>.launchd.log` is written by launchd, not by us, so it cannot be a
+rotating handler. `setup_logger` trims it instead, once per run: over 1 MB it is
+cut back to its last 200 KB, in place. **In place, never renamed** — launchd
+opens this file by path and appends, so a rename would leave the run writing
+into an inode with no name. The *tail* is kept, because what lands here is what
+launchd said before the logger existed — a failed exec, an import that died —
+which is the only record of the failures `<task>.log` cannot hold.
 
 ## Related
 

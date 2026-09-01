@@ -56,7 +56,7 @@ def test_get_asks_for_the_right_item(monkeypatch):
     calls = _fake_run(monkeypatch, lambda args: _Result(stdout="x\n"))
     secrets.get("CLICKUP_API_TOKEN")
     assert calls[0][0] == "find-generic-password"
-    assert "-s" in calls[0] and secrets.SERVICE in calls[0]
+    assert "-s" in calls[0] and secrets.service() in calls[0]
     assert "-a" in calls[0] and "CLICKUP_API_TOKEN" in calls[0]
 
 
@@ -168,3 +168,33 @@ def test_a_subprocess_exception_does_not_log_its_argv(monkeypatch, caplog):
 def test_available_reports_the_binary(monkeypatch):
     monkeypatch.setattr(secrets.os.path, "exists", lambda p: False)
     assert secrets.available() is False
+
+
+# ---- the service name -------------------------------------------------------
+
+def test_service_defaults_to_the_shipped_name():
+    assert secrets.service() == "com.scribejay"
+
+
+def test_service_follows_the_setting(monkeypatch):
+    """It was read with os.getenv, once, at import: no settings file could
+    reach it, and the schema's drift guard could not see it either — that
+    guard walks config.getenv call sites."""
+    monkeypatch.setenv("SCRIBEJAY_KEYCHAIN_SERVICE", "com.scribejay.second")
+    assert secrets.service() == "com.scribejay.second"
+
+
+def test_a_changed_service_reaches_the_keychain_itself(monkeypatch):
+    """Reading the setting is only half of it — the value has to arrive in the
+    argv of all three operations, or a second install writes into one bucket
+    and reads from another."""
+    monkeypatch.setenv("SCRIBEJAY_KEYCHAIN_SERVICE", "com.scribejay.second")
+    calls = _fake_run(monkeypatch, lambda args: _Result(stdout="x\n"))
+
+    secrets.get("CLICKUP_API_TOKEN")
+    secrets.set("CLICKUP_API_TOKEN", "tok")
+    secrets.delete("CLICKUP_API_TOKEN")
+
+    assert len(calls) == 3
+    for argv in calls:
+        assert "com.scribejay.second" in argv

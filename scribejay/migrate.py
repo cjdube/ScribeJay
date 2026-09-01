@@ -162,7 +162,7 @@ def main() -> int:
     print(f"\nWrote {config.config_path()}")
     if creds:
         print(f"Stored {len(creds)} credential(s) in the login Keychain "
-              f"under service '{secrets.SERVICE}'")
+              f"under service '{secrets.service()}'")
     if copied:
         print(f"Copied preference section(s): {', '.join(copied)}")
     print(f"Renamed {env_path().name} -> {retired_env_path().name} so it stops "

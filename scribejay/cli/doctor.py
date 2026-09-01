@@ -99,7 +99,7 @@ def install_checks() -> list[Check]:
         out.append(Check(WARN, "settings", warning))
 
     out.append(Check(OK if secrets.available() else FAIL, "keychain",
-                     f"service '{secrets.SERVICE}'" if secrets.available()
+                     f"service '{secrets.service()}'" if secrets.available()
                      else "no /usr/bin/security on this machine — credentials "
                           "cannot be stored or read"))
     return out

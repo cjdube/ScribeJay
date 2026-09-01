@@ -66,6 +66,11 @@ class Setting:
     help: str
     type: str = "str"          # str | int | float | bool | path | choice
     default: str | None = None
+    # For a default that sits inside config_home(): the trailing part only.
+    # A row is built once, at import, and SCRIBEJAY_CONFIG_DIR can move after
+    # that — a test does exactly this — so the join belongs in default_for(),
+    # not here. Mutually exclusive with `default`.
+    default_under_config_home: str | None = None
     feature: str = "core"
     secret: bool = False
     choices: tuple[str, ...] = ()
@@ -75,12 +80,23 @@ class Setting:
 # so the schema and the module that used to own the constant cannot disagree.
 _HOME = Path.home()
 
-# ScribeJay's own directory, and the answer to "where does a path default point
-# when there is no checkout to point at". Installed with `uv tool install`, the
-# package sits in site-packages, so anything defaulting beside the source tree
-# would default somewhere read-only that no user can find. Spelled out here
-# rather than imported from core/config.py, which imports this module.
-_CONFIG_HOME = Path(os.environ.get("SCRIBEJAY_CONFIG_DIR") or (_HOME / ".scribejay"))
+def config_home() -> Path:
+    """ScribeJay's own directory, and the answer to "where does a path default
+    point when there is no checkout to point at". Installed with
+    `uv tool install`, the package sits in site-packages, so anything
+    defaulting beside the source tree would default somewhere read-only that
+    no user can find.
+
+    Lives here rather than in core/config.py, which imports this module.
+    `config.config_dir()` delegates to it so there is exactly one reader: two
+    copies of this line drifted apart once already, one frozen at import and
+    one read live, and only the frozen one was wrong.
+
+    Read on every call, never cached — tests point SCRIBEJAY_CONFIG_DIR at a
+    throwaway directory, and a value captured at import would answer for the
+    developer's real home for the rest of the process.
+    """
+    return Path(os.environ.get("SCRIBEJAY_CONFIG_DIR") or (_HOME / ".scribejay"))
 
 
 SETTINGS: tuple[Setting, ...] = (
@@ -93,12 +109,21 @@ SETTINGS: tuple[Setting, ...] = (
         default=None,
     ),
     Setting(
+        key="SCRIBEJAY_KEYCHAIN_SERVICE", section="core", name="keychain_service",
+        label="Keychain service",
+        help="The macOS Keychain service every ScribeJay credential is filed "
+             "under. Change this only to keep a second install's credentials "
+             "apart: the existing items stay under the old name, so every key "
+             "reads as not set until you paste them in again.",
+        default="com.scribejay",
+    ),
+    Setting(
         key="SCRIBEJAY_LOGS_DIR", section="core", name="logs_dir",
         label="Log directory", type="path",
         help="Where each task writes its run log. One file per task. The "
              "file names are the task names and must not change: run history "
              "is keyed off them.",
-        default=str(_CONFIG_HOME / "logs"),
+        default_under_config_home="logs",
     ),
     Setting(
         key="LEARNINGS_DIR", section="output", name="learnings_dir", type="path",
@@ -243,7 +268,7 @@ SETTINGS: tuple[Setting, ...] = (
         help="The client-secret JSON downloaded from Google Cloud Console. "
              "A relative path is resolved against a source checkout if the "
              "file is there, and against ~/.scribejay otherwise.",
-        default=str(_CONFIG_HOME / "google_credentials.json"),
+        default_under_config_home="google_credentials.json",
     ),
     Setting(
         key="GOOGLE_TOKEN_PATH", section="google", name="token_path",
@@ -251,7 +276,7 @@ SETTINGS: tuple[Setting, ...] = (
         label="OAuth token cache",
         help="Where the token is stored after the one-time browser consent. "
              "Written by Google's own library, so it is not a Keychain item.",
-        default=str(_CONFIG_HOME / "google_token.json"),
+        default_under_config_home="google_token.json",
     ),
     Setting(
         key="GOOGLE_CALENDAR_ID", section="google", name="calendar_id", feature="google",
@@ -603,8 +628,16 @@ def get(key: str) -> Setting | None:
 
 
 def default_for(key: str) -> str | None:
+    """The shipped default for `key`, with a config-home default joined now
+    rather than at import. The single reader of `Setting.default`: reaching
+    past this for the raw field gets a None for the three rows that use
+    `default_under_config_home`."""
     setting = BY_KEY.get(key)
-    return setting.default if setting else None
+    if setting is None:
+        return None
+    if setting.default_under_config_home is not None:
+        return str(config_home() / setting.default_under_config_home)
+    return setting.default
 
 
 def is_secret(key: str) -> bool:

@@ -91,8 +91,11 @@ STARTUP_WARNINGS: list[str] = []
 
 def config_dir() -> Path:
     """The directory holding config.json. Overridable with
-    SCRIBEJAY_CONFIG_DIR — which is how tests keep away from the real one."""
-    return Path(os.environ.get("SCRIBEJAY_CONFIG_DIR") or (Path.home() / ".scribejay"))
+    SCRIBEJAY_CONFIG_DIR — which is how tests keep away from the real one.
+
+    Delegated to schema so the three path defaults that point inside this
+    directory and this function cannot answer differently."""
+    return schema.config_home()
 
 
 def config_path() -> Path:
@@ -215,9 +218,9 @@ def getenv(key: str, default=None):
     if value:
         return value
 
-    setting = schema.get(key)
-    if setting is not None and setting.default is not None:
-        return setting.default
+    fallback = schema.default_for(key)
+    if fallback is not None:
+        return fallback
 
     return default
 

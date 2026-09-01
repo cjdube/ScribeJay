@@ -209,3 +209,46 @@ def test_env_example_states_the_real_number_of_secrets():
 
     assert f"the {_COUNT_WORDS[count]} secrets live in the macOS Keychain" in text, (
         f"the schema holds {count} secrets; .env.example says otherwise")
+
+
+# --------------------------------------------------------------------------- #
+# config_home — one live reader, shared with core/config.py.
+# --------------------------------------------------------------------------- #
+
+def test_config_home_defaults_follow_a_relocated_config_dir(monkeypatch, tmp_path):
+    """SCRIBEJAY_CONFIG_DIR set after import used to move config.config_dir()
+    and leave these three defaults pointing at the old home: schema captured
+    the variable once, at import, while core/config.py read it on every call.
+
+    conftest sets the variable before any scribejay import, which is why the
+    suite never noticed — and why the next test to set it later would have.
+    """
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+
+    assert config.config_dir() == tmp_path
+    assert schema.default_for("SCRIBEJAY_LOGS_DIR") == str(tmp_path / "logs")
+    assert schema.default_for("GOOGLE_TOKEN_PATH") == str(tmp_path / "google_token.json")
+    assert (schema.default_for("GOOGLE_CREDENTIALS_PATH")
+            == str(tmp_path / "google_credentials.json"))
+    # And through the seam every caller actually uses. Not SCRIBEJAY_LOGS_DIR:
+    # conftest pins that one in the environment, which outranks any default.
+    assert config.getenv("GOOGLE_TOKEN_PATH") == str(tmp_path / "google_token.json")
+
+
+def test_only_one_module_reads_the_config_dir_variable():
+    """The drift itself, guarded. Two copies of this line existed and one was
+    wrong; core/config.py:config_dir() now delegates to schema.config_home()."""
+    from pathlib import Path
+
+    source = (Path(schema.__file__).resolve().parent / "config.py").read_text()
+    assert 'os.environ.get("SCRIBEJAY_CONFIG_DIR")' not in source, (
+        "core/config.py reads SCRIBEJAY_CONFIG_DIR itself again — that is the "
+        "second reader that drifted from schema.config_home() last time")
+
+
+def test_a_config_home_row_carries_no_frozen_default():
+    """The two fields are mutually exclusive: a row with both would put the
+    import-time answer back, and default_for() would hide it."""
+    both = [s.key for s in schema.SETTINGS
+            if s.default is not None and s.default_under_config_home is not None]
+    assert not both, f"rows with both a default and a config-home default: {both}"

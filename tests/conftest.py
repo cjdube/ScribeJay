@@ -121,6 +121,10 @@ def _isolate_task_logs(tmp_path, monkeypatch):
     # the last run out of these files, and writes a probe file to check the
     # folder is writable — needs the setting itself redirected, or it lands in
     # the developer's real logs/ folder.
+    #
+    # It also covers the one writer here that is not a log handler, and so is
+    # invisible to the FileHandler guard above: setup_logger trims
+    # <task>.launchd.log in place, through this same LOGS_DIR.
     monkeypatch.setenv("SCRIBEJAY_LOGS_DIR", str(tmp_path))
 
 

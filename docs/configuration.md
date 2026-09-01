@@ -71,6 +71,10 @@ They are stored as generic passwords under service `com.scribejay`, read through
 `/usr/bin/security` — no new dependency, no Python keyring stack. That keeps the
 settings file safe to back up, sync, and paste into a bug report.
 
+`SCRIBEJAY_KEYCHAIN_SERVICE` moves that name, for a second install that wants
+its own bucket. Change it and the items already stored stay where they are, so
+every credential reads as **not set** until you paste them in again.
+
 `config.set_value()` **refuses** a secret key, so there is no accidental path
 from a form field to disk.
 
