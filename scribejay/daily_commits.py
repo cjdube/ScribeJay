@@ -99,7 +99,7 @@ def _closed_clickup(day, logger) -> list:
         # every single daily_commits run, forever.
         return []
     try:
-        result = closed_tasks(day)
+        result = closed_tasks(day, logger=logger)
     except Exception as e:
         logger.warning(f"ClickUp closed Tasks unavailable: {e}")
         return []

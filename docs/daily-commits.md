@@ -28,6 +28,7 @@ nothing had failed. See [The ClickUp half](#the-clickup-half) below.
 | **The Space leads each line** | It is the part git cannot say. A Task in a code Space mostly restates a commit two sections above it; a Vibe Foundry one is the only record of that day's work anywhere. |
 | **`date_updated_gt` at the start of the local day** | Bounds the fetch against the `_MAX_PAGES` ceiling as the workspace grows. Safe rather than lucky: closing a Task *is* an update, so anything closed that day carries a `date_updated` at or after the day's start. |
 | **A day of pure non-code work never wakes the model** | Ollama serves one request at a time, and the daily jobs run minutes apart; loading a model to render a list nobody drafted would hold that slot for nothing. |
+| **A truncated fetch says so** | `_MAX_PAGES` caps the walk at 1000 Tasks so an unexpectedly large workspace cannot spin the loop. Reaching that cap now logs a WARNING with the count. It used to be silent, and a silent truncation is the worst shape of failure here: a run that produces *less* pushes no alert, while a failing one does, so the day just reads as a quiet one. |
 | **A ClickUp outage costs the section, not the page** | The standing degrade-don\'t-crash rule. It is logged at WARNING, so a silently missing section is still visible in the 8am log sweep. |
 
 A day that *had* commits but whose draft came back empty writes **nothing at all**,

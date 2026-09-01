@@ -482,7 +482,12 @@ def test_feature(name: str) -> str:
 
     if name == "chrome":
         from scribejay.sources.chrome import fetch_chrome_history
-        return _rows(fetch_chrome_history(days_ago=1, max_sites=None), "sites")
+        # start=end=yesterday, not days_ago=1: days_ago builds a window running
+        # to *today* 23:59, so today's browsing was being counted and then
+        # reported as "row(s) for yesterday". A number that includes today can
+        # look healthy on a day the 5:15 run will find nothing.
+        return _rows(fetch_chrome_history(start=str(day), end=str(day),
+                                          max_sites=None), "sites")
 
     if name == "transcripts":
         from scribejay.sources.transcripts import fetch_session_activity

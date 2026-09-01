@@ -72,9 +72,10 @@ def _stub_clickup(monkeypatch, tasks, spaces=(("s1", "Vibe Foundry"),)):
     monkeypatch.setattr(clickup, "_spaces",
                         lambda t, tid: [{"id": i, "name": n} for i, n in spaces])
 
-    def _fetch(token, team_id, space_ids, include_done, updated_after_ms=None, **k):
+    def _fetch(token, team_id, space_ids, include_done, updated_after_ms=None,
+               logger=None, **k):
         seen.update(include_done=include_done, updated_after_ms=updated_after_ms,
-                    space_ids=space_ids)
+                    space_ids=space_ids, logger=logger)
         return tasks
     monkeypatch.setattr(clickup, "_fetch_tasks", _fetch)
     return seen
@@ -132,3 +133,57 @@ def test_a_failure_degrades_to_an_error_dict(monkeypatch):
 def test_no_spaces_is_an_empty_day_not_an_error(monkeypatch):
     _stub_clickup(monkeypatch, [], spaces=())
     assert clickup.closed_tasks(DAY) == {"items": []}
+
+
+# --------------------------------------------------------------------------- #
+# _fetch_tasks — the page cap is a degrade, and a degrade has to be logged.
+# A task that produces *less* pushes no alert, while a failing one does, so a
+# silent truncation reads exactly like a quiet day (AGENTS.md).
+# --------------------------------------------------------------------------- #
+
+class _Recorder:
+    """The one logger method this path uses. A real logger would need the
+    suite's log guards; this needs nothing and shows what was said."""
+
+    def __init__(self):
+        self.warnings = []
+
+    def warning(self, message):
+        self.warnings.append(message)
+
+
+def test_fetch_tasks_warns_when_the_page_cap_stops_the_walk(monkeypatch):
+    # Every page comes back full and never says last_page, so only the cap can
+    # end the loop — the shape of a workspace bigger than the walk allows.
+    monkeypatch.setattr(clickup, "_get",
+                        lambda path, token, **k: {"tasks": [{"id": "t"}] * clickup._PAGE_SIZE})
+    logger = _Recorder()
+
+    out = clickup._fetch_tasks("tok", "team1", ["s1"], include_done=True, logger=logger)
+
+    assert len(out) == clickup._MAX_PAGES * clickup._PAGE_SIZE
+    assert len(logger.warnings) == 1
+    assert "cap" in logger.warnings[0]
+
+
+def test_fetch_tasks_says_nothing_when_the_api_ends_the_walk(monkeypatch):
+    """The other half: a warning on every ordinary run is a warning nobody
+    reads, which would cost the one that matters."""
+    monkeypatch.setattr(clickup, "_get",
+                        lambda path, token, **k: {"tasks": [{"id": "t"}], "last_page": True})
+    logger = _Recorder()
+
+    clickup._fetch_tasks("tok", "team1", ["s1"], include_done=True, logger=logger)
+
+    assert logger.warnings == []
+
+
+def test_closed_tasks_hands_its_logger_to_the_pager(monkeypatch):
+    """The warning above is only reachable if the logger travels the whole way
+    down. closed_tasks took none at all before, so the cap could never speak."""
+    seen = _stub_clickup(monkeypatch, [])
+    logger = _Recorder()
+
+    clickup.closed_tasks(DAY, logger=logger)
+
+    assert seen["logger"] is logger

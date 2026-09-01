@@ -50,7 +50,7 @@ def stubbed_run(monkeypatch):
                         or {"repos": 12, "failed": 0})
     # ClickUp quiet by default: the suite-wide egress guard would otherwise fire
     # here, since every run now asks what closed.
-    monkeypatch.setattr(dc, "closed_tasks", lambda day: {"items": []})
+    monkeypatch.setattr(dc, "closed_tasks", lambda day, logger=None: {"items": []})
     monkeypatch.setattr(dc, "scribejay_backend", lambda key: None)
     monkeypatch.setattr(dc, "warm_model", lambda **k: seen.update(warms=seen["warms"] + 1))
 
@@ -289,7 +289,7 @@ def test_a_day_of_pure_non_code_work_still_writes_an_entry(stubbed_run, monkeypa
     monkeypatch.setattr(dc, "collect_commits",
                         lambda *a, **k: {"commits": [], "repos": {},
                                          "total_commits": 0, "repos_scanned": 12})
-    monkeypatch.setattr(dc, "closed_tasks", lambda day: {"items": [_closed()]})
+    monkeypatch.setattr(dc, "closed_tasks", lambda day, logger=None: {"items": [_closed()]})
 
     assert dc.main() == 0
     assert len(stubbed_run["persists"]) == 1
@@ -302,7 +302,7 @@ def test_a_day_of_pure_non_code_work_never_wakes_the_model(stubbed_run, monkeypa
     monkeypatch.setattr(dc, "collect_commits",
                         lambda *a, **k: {"commits": [], "repos": {},
                                          "total_commits": 0, "repos_scanned": 12})
-    monkeypatch.setattr(dc, "closed_tasks", lambda day: {"items": [_closed()]})
+    monkeypatch.setattr(dc, "closed_tasks", lambda day, logger=None: {"items": [_closed()]})
 
     assert dc.main() == 0
     assert stubbed_run["drafted"] == 0
@@ -324,7 +324,7 @@ def test_both_sources_appear_in_one_entry(stubbed_run, monkeypatch):
     """The commits half is drafted, the ClickUp half is listed, and they share a
     page. Asserting both halves, not just the new one — a two-part promise tested
     on one part stays green forever."""
-    monkeypatch.setattr(dc, "closed_tasks", lambda day: {"items": [_closed()]})
+    monkeypatch.setattr(dc, "closed_tasks", lambda day, logger=None: {"items": [_closed()]})
 
     assert dc.main() == 0
     content = stubbed_run["persists"][0][2]
@@ -339,7 +339,7 @@ def test_clickup_being_down_costs_the_section_not_the_entry(stubbed_run, monkeyp
     Read off capsys, not caplog: setup_logger sets propagate=False, so caplog
     sees nothing these tasks log."""
     monkeypatch.setattr(dc, "closed_tasks",
-                        lambda day: {"error": "HTTP 503 from ClickUp"})
+                        lambda day, logger=None: {"error": "HTTP 503 from ClickUp"})
 
     assert dc.main() == 0
     assert "Labelled-email actions" in stubbed_run["persists"][0][2]
@@ -349,7 +349,7 @@ def test_clickup_being_down_costs_the_section_not_the_entry(stubbed_run, monkeyp
 def test_clickup_raising_costs_the_section_not_the_entry(stubbed_run, monkeypatch):
     """The other half of the guard: closed_tasks returns error dicts, but a
     caller that trusts only that path dies on the first ConnectionError."""
-    def _boom(day):
+    def _boom(day, logger=None):
         raise RuntimeError("connection reset")
     monkeypatch.setattr(dc, "closed_tasks", _boom)
 
@@ -363,7 +363,7 @@ def test_a_failed_model_draft_writes_nothing_even_with_closed_tasks(stubbed_run,
     the ClickUp list alone would turn that failure into a plausible-looking page
     nobody would ever look at twice."""
     monkeypatch.setattr(dc, "complete_text", lambda **k: "")
-    monkeypatch.setattr(dc, "closed_tasks", lambda day: {"items": [_closed()]})
+    monkeypatch.setattr(dc, "closed_tasks", lambda day, logger=None: {"items": [_closed()]})
 
     assert dc.main() == 0
     assert stubbed_run["persists"] == []
@@ -374,8 +374,20 @@ def test_the_day_asked_of_clickup_is_the_day_being_written(stubbed_run, monkeypa
     stamp today's closures onto all of them."""
     asked = []
     monkeypatch.setattr(dc, "closed_tasks",
-                        lambda day: asked.append(day) or {"items": []})
+                        lambda day, logger=None: asked.append(day) or {"items": []})
     monkeypatch.setattr(sys, "argv", ["daily_commits", "--date", "2026-08-20"])
 
     assert dc.main() == 0
     assert [d.isoformat() for d in asked] == ["2026-08-20"]
+
+
+def test_the_clickup_gather_hands_its_logger_down(stubbed_run, monkeypatch):
+    """sources/clickup.py warns when its page cap truncates the day. That
+    warning goes nowhere unless daily_commits passes the run's own logger, so
+    the wiring is asserted here rather than assumed."""
+    seen = {}
+    monkeypatch.setattr(dc, "closed_tasks",
+                        lambda day, logger=None: seen.update(logger=logger) or {"items": []})
+
+    assert dc.main() == 0
+    assert seen["logger"] is not None

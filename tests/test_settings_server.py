@@ -532,3 +532,25 @@ def test_the_other_list_is_untouched_when_only_one_is_submitted():
     config.flush()
     settings_form.apply({"learnings_excluded_domains": "b.com"})
     assert _learnings()["excluded_keywords"] == ["payroll"]
+
+
+def test_the_chrome_test_button_asks_for_yesterday_only(monkeypatch):
+    """days_ago=1 builds a window running to *today* 23:59, so the count
+    included today's browsing and was then printed as "row(s) for yesterday".
+
+    That matters because `doctor --probe` calls this same function and promises
+    what it prints is what tomorrow's 5:15 run will see. A healthy-looking
+    number made entirely of today's rows breaks that promise.
+    """
+    from scribejay.sources import chrome
+
+    seen = {}
+    monkeypatch.setattr(chrome, "fetch_chrome_history",
+                        lambda *a, **k: seen.update(k) or {"sites": []})
+    day = settings_form._yesterday()[2]
+
+    settings_form.test_feature("chrome")
+
+    assert seen["start"] == str(day)
+    assert seen["end"] == str(day)
+    assert "days_ago" not in seen

@@ -78,7 +78,7 @@ def _spaces(token: str, team_id: str) -> list:
 
 
 def _fetch_tasks(token: str, team_id: str, space_ids: list, include_done: bool,
-                 updated_after_ms: int = None) -> list:
+                 updated_after_ms: int = None, logger=None) -> list:
     """Every task in the given Spaces, paged. ClickUp excludes its Closed
     status group by default, so include_done is required to see shipped work."""
     tasks, page = [], 0
@@ -92,8 +92,17 @@ def _fetch_tasks(token: str, team_id: str, space_ids: list, include_done: bool,
         batch = body.get("tasks", [])
         tasks.extend(batch)
         if body.get("last_page") or len(batch) < _PAGE_SIZE:
-            break
+            return tasks
         page += 1
+
+    # Reaching here means the cap stopped the walk, not the API: there are more
+    # tasks in the window than _MAX_PAGES * _PAGE_SIZE. The day then reads as
+    # quieter than it was, and a task that produces *less* pushes no alert while
+    # a failing one does — so say so.
+    if logger:
+        logger.warning(
+            f"ClickUp paging stopped at the {_MAX_PAGES}-page cap after "
+            f"{len(tasks)} task(s); the day's closed Tasks may be incomplete")
     return tasks
 
 
@@ -115,7 +124,7 @@ def _client(api_key: str | None):
     return token, None
 
 
-def closed_tasks(day: date, api_key: str = None) -> dict:
+def closed_tasks(day: date, api_key: str = None, logger=None) -> dict:
     """Every Task that reached a Done status on `day` (a LOCAL date), for
     scribejay/daily_commits.py.
 
@@ -130,7 +139,11 @@ def closed_tasks(day: date, api_key: str = None) -> dict:
 
     Rows carry the Space and the status name because both differ across
     Spaces and both are what makes a line readable. No description: nothing
-    renders one."""
+    renders one.
+
+    `logger` is optional so the settings screen's Test button can call this
+    with nothing to log to; the scheduled job passes its own, which is where
+    the page-cap warning has to land."""
     token, err = _client(api_key)
     if err:
         return err
@@ -145,7 +158,7 @@ def closed_tasks(day: date, api_key: str = None) -> dict:
             return {"items": []}
         space_by_id = {a["id"]: a["name"] for a in spaces}
         tasks = _fetch_tasks(token, team_id, list(space_by_id), include_done=True,
-                             updated_after_ms=start_ms)
+                             updated_after_ms=start_ms, logger=logger)
     except _ClickUpError as e:
         return {"error": str(e)}
     except Exception as e:
