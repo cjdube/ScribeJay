@@ -193,6 +193,36 @@ def _looks_published(path: str) -> bool:
     return False
 
 
+# Sections that publish, but publish nothing this journal is for.
+#
+# This one IS a reject list, and deliberately so. The allow list above answers a
+# privacy question — never send a url that might be private — where failing open
+# is unacceptable. This answers a relevance question, where failing open costs a
+# wasted fetch and a wasted model call, nothing more.
+#
+# It exists because the two are not the same test. "thinking-of-ending-things"
+# and "rigatoni-with-marinated-tomatoes-and-burrata" are published writing by
+# every measure `_looks_published` applies. Over the same five days they and
+# three like them took 5 of 16 page notes. DRAFT_SYSTEM_PROMPT already tells the
+# model to drop fitness, social, travel and household items; this drops them
+# before they cost anything, and before `journal.py:pages_read_section` prints
+# them into the vault, which — unlike the draft prompt — has no judgment.
+#
+# Matched as whole path segments, so "ent" needs to be a section rather than the
+# start of "enterprise".
+_OFF_TOPIC_SECTIONS = frozenset({
+    "sports", "sport", "mlb", "nfl", "nba", "nhl", "wnba", "ncaa", "mls",
+    "soccer", "golf", "tennis", "olympics", "fitness",
+    "entertainment", "ent", "celebrity", "celebrities", "movies", "tv", "music",
+    "horoscope", "recipes", "recipe", "food", "cooking", "lifestyle",
+    "travel", "fashion", "weather",
+})
+
+
+def _is_off_topic(path: str) -> bool:
+    return any(segment in _OFF_TOPIC_SECTIONS for segment in path.lower().split("/"))
+
+
 def _fetch_url(url: str) -> str:
     """The same page with its query string and fragment removed.
 
@@ -226,8 +256,8 @@ def candidate_urls(sites: list, limit: int) -> list[dict]:
     Applies the same exclusion rules `compact_sites` does — a subject the user
     told ScribeJay to leave out must not be sent to a fetcher, least of all a
     third-party one — plus the scheme, host and file-type guards a network call
-    needs and a prompt does not, and `_looks_published`, which is the one that
-    keeps a signed-in portal out.
+    needs and a prompt does not, `_looks_published`, which is the one that keeps
+    a signed-in portal out, and `_is_off_topic`, which keeps the sports desk out.
 
     The returned url has no query string: see `_fetch_url`.
 
@@ -251,6 +281,8 @@ def candidate_urls(sites: list, limit: int) -> list[dict]:
             if lowered.endswith(_BINARY_SUFFIXES):
                 continue
             if not _looks_published(lowered):
+                continue
+            if _is_off_topic(lowered):
                 continue
             by_domain.setdefault(domain, []).append({
                 "domain": domain,

@@ -54,6 +54,38 @@ def closed_tasks_section(items: list) -> str:
     return "\n".join(lines)
 
 
+def pages_read_section(pages: list) -> str:
+    """Deterministic Markdown listing the pages that were fetched and summarised,
+    one line each, with the summary kept whole.
+
+    Built in Python for the same reason videos_section is: the URL has to be
+    exact and scheme-validated, and the note is already ScribeJay's own words
+    about the page. Sending them back through the model to be re-rendered would
+    only let them drift from what the summarizer actually said.
+
+    This is the second and last thing the notes do. They also go into the draft
+    prompt above, which compresses several pages into one bullet — that is what
+    makes the bullets specific, and it is also what loses the detail. This
+    section is where the detail survives.
+
+    The summary is collapsed to one line: it should never contain a newline, but
+    one that did would silently break the list into fragments — the same bug
+    closed_tasks_section guards against.
+    """
+    lines = ["### Pages Read"]
+    if not pages:
+        lines.append("- **None:** [No pages were read this day]")
+        return "\n".join(lines)
+    for page in pages:
+        url = safe_url(page.get("url") or "")
+        title = " ".join((page.get("title") or "").split()) \
+            or f"{page.get('domain', '')}{page.get('path', '')}"
+        note = " ".join((page.get("notes") or "").split())
+        label = f"[{title}]({url})" if url else title
+        lines.append(f"- **{label}** — {note}" if note else f"- **{label}**")
+    return "\n".join(lines)
+
+
 def has_substantive_content(text: str) -> bool:
     """True if the draft has at least one real bullet — i.e. a bullet that isn't
     the template's "**None:**" empty-section marker. Lets a task skip writing a

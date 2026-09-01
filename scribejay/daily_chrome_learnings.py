@@ -31,7 +31,7 @@ from scribejay.core import config, registry
 from scribejay.core.dates import local_timezone, prior_day, resolve_date
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
-from scribejay.journal import has_substantive_content
+from scribejay.journal import has_substantive_content, pages_read_section
 from scribejay.sinks.vault import persist_or_email
 from scribejay.sources.chrome import fetch_chrome_history
 
@@ -220,8 +220,13 @@ def page_notes_block(summaries: list) -> str:
 
 
 def enrich(sites: list, logger, backend: str | None, limit: int,
-           fetch_backend: str = "auto") -> tuple[str, dict]:
-    """Pick pages, fetch them, summarise them. Returns (notes_block, stats).
+           fetch_backend: str = "auto") -> tuple[str, list, dict]:
+    """Pick pages, fetch them, summarise them.
+
+    Returns (notes_block, summaries, stats). The block is the compacted text
+    the draft prompt reads; the summaries are the same notes still carrying
+    their url and title, which `journal.py:pages_read_section` needs and the
+    block deliberately drops.
 
     Every failure here is survivable: no candidates, nothing fetched, nothing
     summarised, or the whole thing raising all end the same way — an empty
@@ -236,7 +241,7 @@ def enrich(sites: list, logger, backend: str | None, limit: int,
         stats["candidates"] = len(candidates)
         if not candidates:
             logger.info("web fetch: no page was eligible to fetch")
-            return "", stats
+            return "", [], stats
 
         pages, fetch_stats = web_fetch.fetch_pages(
             candidates, backend=fetch_backend, logger_=logger)
@@ -246,17 +251,17 @@ def enrich(sites: list, logger, backend: str | None, limit: int,
                     f"{fetch_stats['seconds']}s ({fetch_stats['failed']} failed, "
                     f"{fetch_stats['cached']} from cache)")
         if not pages:
-            return "", stats
+            return "", [], stats
 
         summaries = summarize_pages(pages, logger, backend)
         stats["summarized"] = len(summaries)
         block = page_notes_block(summaries)
         logger.info(f"web fetch: {len(summaries)} page notes, {len(block)} chars")
-        return block, stats
+        return block, summaries, stats
     except Exception as e:
         logger.warning(f"web fetch failed ({type(e).__name__}: {e}) — "
                        "drafting from paths alone")
-        return "", stats
+        return "", [], stats
 
 
 def build_prompt(day, chrome_sites: list, notes_block: str = "") -> str:
@@ -293,9 +298,9 @@ def run_day(day, logger, backend: str | None, fetch: bool, dry_run: bool) -> int
 
     warm_model(logger=logger, backend=backend)
 
-    notes_block = ""
+    notes_block, summaries = "", []
     if fetch:
-        notes_block, _ = enrich(sites, logger, backend, max_pages(logger))
+        notes_block, summaries, _ = enrich(sites, logger, backend, max_pages(logger))
     else:
         logger.info("web fetch is off; drafting from paths alone")
 
@@ -311,6 +316,13 @@ def run_day(day, logger, backend: str | None, fetch: bool, dry_run: bool) -> int
     if not has_substantive_content(entry_text):
         logger.info("Draft had no qualifying items; nothing to write")
         return 0
+
+    # After the check, not before: the check asks whether the *model* found
+    # anything worth logging, and a Pages Read section would answer yes on every
+    # day something was fetched.
+    if summaries:
+        entry_text = entry_text.rstrip() + "\n\n" + pages_read_section(summaries)
+        logger.info(f"appended a Pages Read section with {len(summaries)} pages")
 
     if dry_run:
         logger.info("Dry run — not writing or emailing")

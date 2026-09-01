@@ -362,3 +362,65 @@ def test_the_summarizer_is_shown_the_whole_fetched_page(monkeypatch):
                          "path": "/a", "text": body}],
                        _RecordingLogger(), backend=None)
     assert seen[0].endswith("Z")
+
+
+def _summary_then_draft(monkeypatch, summary="Ollama 0.5 added a JSON schema field."):
+    """The two model calls a one-page fetch makes, in order."""
+    calls = []
+
+    def _model(**k):
+        calls.append(k["user_prompt"])
+        if len(calls) == 1:
+            return summary
+        return ("## Daily Log: July 12, 2026\n\n### Tools & Tech Encountered\n"
+                "- **Ollama:** structured outputs")
+
+    monkeypatch.setattr(dc, "complete_text", _model)
+    return calls
+
+
+def test_the_page_notes_are_also_written_into_the_entry(fetchable, monkeypatch):
+    """The notes do two jobs: they shape the bullets, and they survive whole in a
+    Pages Read section. Before this, they were prompt input only and nothing the
+    summarizer said ever reached the vault."""
+    _stub_fetch(monkeypatch, [_page()])
+    _summary_then_draft(monkeypatch)
+    assert dc.main() == 0
+
+    _, _, content = fetchable["persists"][0]
+    assert "### Pages Read" in content
+    assert "[Structured outputs](https://ollama.com/blog/structured-outputs)" in content
+    assert "Ollama 0.5 added a JSON schema field." in content
+    # The drafted bullets are still above it, not replaced by it.
+    assert content.index("### Tools & Tech Encountered") < content.index("### Pages Read")
+
+
+def test_no_pages_read_section_when_nothing_was_fetched(fetchable, monkeypatch):
+    """The paired negative, so the test above cannot pass by always appending.
+    A day with no usable page gets exactly the entry it got before the feature."""
+    _stub_fetch(monkeypatch, [])
+    # No page fetched means no summary call, so the only call is the draft.
+    monkeypatch.setattr(dc, "complete_text", lambda **k:
+                        "## Daily Log: July 12, 2026\n\n### Tools & Tech Encountered\n"
+                        "- **Ollama:** structured outputs")
+    assert dc.main() == 0
+    assert "Pages Read" not in fetchable["persists"][0][2]
+
+
+def test_an_all_none_draft_still_writes_nothing_even_with_pages_read(fetchable, monkeypatch):
+    """The substantive-content check asks whether the MODEL found anything worth
+    logging. Appending before it would answer yes on every day something was
+    fetched, and a day of pure noise would start producing a file."""
+    _stub_fetch(monkeypatch, [_page()])
+    calls = []
+
+    def _model(**k):
+        calls.append(k["user_prompt"])
+        if len(calls) == 1:
+            return "A note about something."
+        return ("## Daily Log: July 12, 2026\n\n### Tools & Tech Encountered\n"
+                "- **None:** [No qualifying items for this section]")
+
+    monkeypatch.setattr(dc, "complete_text", _model)
+    assert dc.main() == 0
+    assert fetchable["persists"] == []

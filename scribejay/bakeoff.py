@@ -123,10 +123,10 @@ def run(day, logger) -> dict:
     base_blob = str(chrome_sites)
 
     logger.info(f"{day}: arm B — local fetch")
-    notes_local, stats_local = enrich(sites, logger, backend, limit, fetch_backend="local")
+    notes_local, _, stats_local = enrich(sites, logger, backend, limit, fetch_backend="local")
 
     logger.info(f"{day}: arm C — firecrawl fetch")
-    notes_fire, stats_fire = enrich(sites, logger, backend, limit, fetch_backend="firecrawl")
+    notes_fire, _, stats_fire = enrich(sites, logger, backend, limit, fetch_backend="firecrawl")
 
     arms = {
         "A": ("", base_blob),

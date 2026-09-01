@@ -285,7 +285,6 @@ def test_a_private_or_transactional_page_is_never_a_candidate(path):
 
 @pytest.mark.parametrize("path", [
     "/2026/08/26/googles-gemini-has-a-branding-problem",   # a headline slug
-    "/entertainment/tv/articles/josh-radnor-says-no-longer-195909631.html",
     "/hc/en-us/articles/6310067436695-Set-a-default-view",
     "/blog/structured-outputs",          # two words, but under /blog/
     "/gemini-api/docs/models",           # one word, but under /docs/
@@ -312,3 +311,27 @@ def test_the_query_string_is_dropped_before_the_url_leaves():
          "visits": 1}]}
     assert lc.candidate_urls([site], 5)[0]["url"] == \
         "https://example.com/blog/structured-outputs"
+
+
+@pytest.mark.parametrize("path", [
+    "/entertainment/tv/articles/josh-radnor-says-no-longer-195909631.html",
+    "/sports/articles/england-patriots-reunite-rb-1-040223995.html",
+    "/ent/thrill/thinking-of-ending-things-2020.html",
+    "/recipes/14935-rigatoni-with-marinated-tomatoes-and-burrata",
+    "/mlb/game/_/gameId/401816571/diamondbacks-red-sox",
+])
+def test_an_off_topic_section_is_not_a_candidate(path):
+    """These are published writing by every measure `_looks_published` applies,
+    which is the point: the allow list answers a privacy question, and this
+    answers a relevance one. Over five real days these five shapes took 5 of 16
+    page notes, and `journal.py:pages_read_section` would print each into the
+    vault — it has none of the draft prompt's judgment about what belongs."""
+    assert lc.candidate_urls([_fetchable_site("news.com", [(path, 1)])], 5) == []
+
+
+def test_off_topic_matches_a_whole_segment_not_a_prefix():
+    """"ent" is a section on some sites and the start of a word on many more.
+    Segment matching is what keeps /enterprise/ and /entity-resolution/ in."""
+    out = lc.candidate_urls(
+        [_fetchable_site("corp.com", [("/enterprise/why-we-moved-to-postgres", 1)])], 5)
+    assert [p["path"] for p in out] == ["/enterprise/why-we-moved-to-postgres"]

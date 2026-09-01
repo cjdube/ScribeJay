@@ -20,6 +20,7 @@ is written from what they said.
       -> summarize_pages()     3-5 neutral sentences each  (one local model call per page)
       -> page_notes block      capped at 4,000 characters
       -> the ordinary draft prompt
+      -> pages_read_section()  the same notes, kept whole  (journal.py, Python)
 
 Every step degrades to the step before it. A page that will not fetch, will not
 summarize, or trips an exclusion is simply absent, and the day gets the
@@ -46,6 +47,14 @@ already reject (domain, title or path); non-`http(s)` URLs, via
 `/reset-password`, `/checkout` …), matched on path *tokens* so `/descartes` is
 not read as a cart; and file extensions that are not readable text (`.pdf`,
 `.zip`, `.png`, `.mp4` …).
+
+**Off-topic sections are dropped too.** `/sports/`, `/entertainment/`,
+`/recipes/`, `/mlb/` and their neighbours, matched as whole path segments so
+`/enterprise/` survives. This one *is* a reject list, and deliberately: the allow
+list answers a privacy question, where failing open is unacceptable, and this
+answers a relevance one, where failing open costs a fetch and a model call.
+They are not the same test — "rigatoni-with-marinated-tomatoes-and-burrata" is
+published writing by every measure `_looks_published` applies.
 
 **The query string never leaves.** `_fetch_url` sends scheme, host and path
 only. An article renders the same without `?utm_source=`, and the query string
@@ -120,6 +129,31 @@ prompt is already around 1,500 tokens. Eight thousand characters of raw page
 text is roughly 2,000 more, and Ollama trims an over-long prompt **from the
 front** — taking the system prompt with it. The draft comes back missing a whole
 section and nothing anywhere says why.
+
+## Where the notes end up
+
+The notes do two jobs, and it took a round of reading real output to see that
+only one of them was happening.
+
+**They shape the bullets.** The `page_notes` block goes into the draft prompt,
+and the model compresses several pages into one bullet. That is what makes a
+bullet say "over 90 organizations" instead of "reviewed industry threat
+reporting" — and it is also what loses the detail.
+
+**They are kept whole.** `journal.py:pages_read_section` appends a **Pages Read**
+section to the entry: one line per page, the title linked to a scheme-validated
+url, and the summary intact. Plain Python, no model call, built exactly the way
+`videos_section` and `closed_tasks_section` already are. Before this the notes
+were prompt input only, and nothing the summarizer wrote ever reached the vault.
+
+It is appended **after** `has_substantive_content`, not before. That check asks
+whether the *model* found anything worth logging; a Pages Read section would
+answer yes on every day something was fetched, and a day of pure noise would
+start producing a file.
+
+This is also why the off-topic filter above had to land first. The draft prompt
+silently drops a recipe. A Pages Read section has no judgment — it prints
+whatever was fetched.
 
 ## What leaves the machine
 

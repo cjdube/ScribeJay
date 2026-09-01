@@ -130,3 +130,45 @@ def test_a_task_with_no_status_still_renders():
     out = lc.closed_tasks_section([{"title": "X", "space": "Blog", "status": ""}])
     assert "- **Blog:** X" in out
     assert "*()*" not in out
+
+
+# ---------------------------------------------------------------------------
+# pages_read_section
+
+def _page(**kw):
+    base = {"url": "https://e.com/blog/post", "domain": "e.com", "path": "/blog/post",
+            "title": "A Real Title", "notes": "It says a specific thing."}
+    return {**base, **kw}
+
+
+def test_pages_read_section_links_every_page_and_keeps_the_whole_note():
+    section = lc.pages_read_section([_page(), _page(url="https://f.com/docs/x",
+                                                    title="Another", notes="And this.")])
+    assert section.startswith("### Pages Read")
+    assert "- **[A Real Title](https://e.com/blog/post)** — It says a specific thing." in section
+    assert "- **[Another](https://f.com/docs/x)** — And this." in section
+
+
+def test_pages_read_section_empty_states_none():
+    assert "None" in lc.pages_read_section([])
+
+
+def test_pages_read_section_drops_a_bad_scheme_url_but_keeps_the_note():
+    """Same rule videos_section follows: an unsafe URL is never rendered, and
+    the line degrades to unlinked text rather than vanishing."""
+    section = lc.pages_read_section([_page(url="javascript:alert(1)")])
+    assert "javascript:" not in section
+    assert "It says a specific thing." in section
+
+
+def test_pages_read_section_falls_back_to_the_path_when_there_is_no_title():
+    assert "e.com/blog/post]" in lc.pages_read_section([_page(title="")])
+
+
+def test_a_newline_in_a_note_cannot_break_the_list():
+    """A summary should never contain a newline. One that did would split the
+    bullet into fragments, which is the bug closed_tasks_section already guards
+    against — so this guards it the same way."""
+    section = lc.pages_read_section([_page(notes="one\ntwo\nthree")])
+    assert len([ln for ln in section.splitlines() if ln.startswith("- ")]) == 1
+    assert "one two three" in section

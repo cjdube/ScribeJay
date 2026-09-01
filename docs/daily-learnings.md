@@ -44,6 +44,11 @@ open; it does not tell it which models. Turning on
 `SCRIBEJAY_WEB_FETCH_MAX_PAGES` of yesterday's pages, summarize each one
 locally, and hand those summaries to the draft as `page_notes`.
 
+The summaries then do a second job: a **Pages Read** section is appended to the
+entry, one line per page, with the summary kept whole and the title linked. The
+bullets above it are still the model's compression — that is what makes them
+specific — and the section below is where the detail survives.
+
 The fetch is done by this Mac. Firecrawl is an opt-in fallback for pages the
 Mac cannot render, and only if `FIRECRAWL_API_KEY` is set — with it on, the
 chosen URLs and their content leave the machine. The raw page text never
