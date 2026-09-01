@@ -20,6 +20,10 @@ suite-wide rather than per-test — a missed convention has to stay harmless:
 - `core/usage_ledger.py` appends a row to logs/usage.jsonl on every model
   call, and drops a .lock sidecar beside it. Redirected below.
 - ClickUp and Gemini are both live network egress the suite must never reach.
+- `sources/web_fetch.py` fetches arbitrary web pages the developer actually
+  visited, and — with a Firecrawl key in the Keychain — spends real money
+  doing it. Both backends are stubbed suite-wide, and its on-disk cache is
+  redirected so a test cannot read or poison the real one.
 - `core/config.py` reads the user's real ~/.scribejay/config.json AND their
   real config/.env at import — and the .env is the top resolution layer, so
   it silently decides every setting the suite sees. `core/secrets.py` reads
@@ -74,6 +78,7 @@ from scribejay.core.backends import openrouter as _openrouter_backend  # noqa: E
 from scribejay.sinks import email as _email  # noqa: E402
 from scribejay.sources import clickup as _clickup  # noqa: E402
 from scribejay.sources import transcripts as _chat_transcripts  # noqa: E402
+from scribejay.sources import web_fetch as _web_fetch  # noqa: E402
 from scribejay import ai_chat_learnings as _ai_chat_learnings  # noqa: E402
 from scribejay.cli import schedule as _schedule  # noqa: E402
 from scribejay.cli import settings_server as _settings_server  # noqa: E402
@@ -361,3 +366,36 @@ def _block_browser_open(monkeypatch):
         raise RuntimeError("a test tried to open a real browser window")
 
     monkeypatch.setattr(_settings_server.webbrowser, "open", _blocked)
+
+
+class _WebFetchEgress(BaseException):
+    """Deliberately NOT an Exception. fetch_local() ends in
+    `except Exception: return http_error(e)` and fetch_page() drops any error
+    and moves on, so an ordinary error raised here would be swallowed by the
+    very code it guards: the test would pass having proved nothing, and a real
+    run would still have hit the network."""
+
+
+@pytest.fixture(autouse=True)
+def _block_web_fetch_egress(tmp_path, monkeypatch):
+    """Stub both fetch backends, and redirect the cache off the real one.
+
+    Two different kinds of harm here, which is why both halves are suite-wide:
+    the local backend GETs whatever url a fixture happens to carry, and the
+    Firecrawl backend resolves the developer's real key through the same layers
+    a scheduled run does — every call is billed. The cache matters too: left
+    alone, a test would read ~/.scribejay/web_fetch_cache.json and could write
+    fixture text into it, which a later real run would then serve as if it had
+    been fetched. tests/test_web_fetch.py re-patches these per test.
+    """
+    def _blocked(name):
+        def _raise(*a, **k):
+            raise _WebFetchEgress(
+                f"a test reached the live web ({name}) — stub "
+                f"scribejay.sources.web_fetch.{name} in that test.")
+        return _raise
+
+    monkeypatch.setattr(_web_fetch, "fetch_local", _blocked("fetch_local"))
+    monkeypatch.setattr(_web_fetch, "fetch_firecrawl", _blocked("fetch_firecrawl"))
+    monkeypatch.setattr(_web_fetch, "cache_path",
+                        lambda: tmp_path / "web_fetch_cache.json")

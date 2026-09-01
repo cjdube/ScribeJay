@@ -42,11 +42,14 @@ dependencies = [
     "httplib2==0.32.0",
 ]
 
-# Imported lazily, only when SCRIBEJAY_LLM_BACKEND=gemini is selected, so a
-# purely local (Ollama) install never loads it and need not install it.
+# Both extras are imported lazily, so a plain local install loads neither and
+# need not install either: google-genai only when SCRIBEJAY_LLM_BACKEND=gemini
+# is selected, trafilatura only when SCRIBEJAY_WEB_FETCH_ENABLED=1 asks for a
+# page. A missing trafilatura reads as "no text", not as an ImportError.
 [project.optional-dependencies]
 gemini = ["google-genai==2.11.0"]
-dev = ["google-genai==2.11.0", "pytest==9.1.1"]
+webfetch = ["trafilatura==2.2.0"]
+dev = ["google-genai==2.11.0", "trafilatura==2.2.0", "pytest==9.1.1"]
 
 [project.scripts]
 scribejay = "scribejay.cli:main"

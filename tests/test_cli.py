@@ -52,6 +52,25 @@ def test_run_forwards_task_arguments(monkeypatch):
                             "--backfill", "3"]
 
 
+def test_run_forwards_the_web_fetch_flags_unchanged(monkeypatch):
+    """`--web-fetch off` is a value-bearing flag the CLI's own parser knows
+    nothing about. parse_known_args must hand both tokens to the task rather
+    than eating one of them."""
+    seen = {}
+
+    def fake_main():
+        seen["argv"] = list(sys.argv)
+        return 0
+
+    module = type("M", (), {"main": staticmethod(fake_main)})
+    monkeypatch.setattr(cli.importlib, "import_module", lambda name: module)
+
+    cli.main(["run", "daily_chrome_learnings", "--date", "2026-08-29",
+              "--web-fetch", "off", "--dry-run"])
+    assert seen["argv"] == ["scribejay.daily_chrome_learnings", "--date",
+                            "2026-08-29", "--web-fetch", "off", "--dry-run"]
+
+
 def test_run_restores_argv_even_when_the_task_raises(monkeypatch):
     """A task that blows up must not leave sys.argv rewritten. `scribejay run`
     is one process; a mangled argv would make anything after it — a traceback

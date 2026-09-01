@@ -24,9 +24,11 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
 
 - `scribejay/core/` — the settings/model/logging/notify/store/http/dates/
   google seam every task reads through. `core/model.py` is the one choke
-  point for every model call — four tasks make one, `ai_chat_learnings` one
-  per chat and `claude_time_blocks` one per block, and `strava_download` and
-  `daily_correspondence` make none at all. `core/config.py` is the
+  point for every model call — three tasks make one, `ai_chat_learnings` one
+  per chat, `claude_time_blocks` one per block, and `daily_chrome_learnings`
+  one draft plus one per fetched page when web fetch is on
+  ([docs/web-fetch.md](docs/web-fetch.md)) and one otherwise; `strava_download`
+  and `daily_correspondence` make none at all. `core/config.py` is the
   settings seam, resolving env var -> `~/.scribejay/config.json` -> the
   default in `core/schema.py`, with secrets in the macOS Keychain via
   `core/secrets.py` ([docs/configuration.md](docs/configuration.md)).
@@ -105,6 +107,14 @@ Don't.
   subscription contradicts the local-first design; flag it for discussion.
 - **If a signal has no legitimate source, say so** and drop or defer it —
   don't quietly substitute a gray-area source.
+- **A url the user visited is user data, not a public address.** Anything that
+  sends one outward — a fetcher, least of all a third-party one — decides what
+  to send with an **allow list**, never a reject list. Measured over five real
+  days, a reject list spent 10 of 25 picks on signed-in portals (mail, a
+  hospital chart, bookings, a cloud dashboard) because the next portal is never
+  on the list. Strip the query string too: that is where the order ids,
+  reservation codes and SSO tokens live. See `activity.py:_looks_published`
+  and `_fetch_url`, and [docs/web-fetch.md](docs/web-fetch.md).
 - **Every HTTP call has an explicit timeout.**
 - **Degrade, don't crash.** A failing source returns `{"error": ...}` and
   reads as empty to callers; one dead source must never crash a task.

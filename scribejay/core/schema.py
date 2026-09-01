@@ -321,6 +321,47 @@ SETTINGS: tuple[Setting, ...] = (
     # Chrome's history database path is not configurable today: chrome.py reads
     # the standard profile location. It needs Full Disk Access, which is a
     # permission, not a setting — the wizard walks it, doctor verifies it.
+    #
+    # The rows below configure web fetch: reading a few of the day's pages so
+    # the review can say what they said rather than guessing from a url. Not a
+    # feature in core/features.py, deliberately — a feature is a source a user
+    # declines, and this enriches a source they already have.
+    Setting(
+        key="SCRIBEJAY_WEB_FETCH_ENABLED", section="chrome", name="web_fetch",
+        type="bool", feature="chrome",
+        label="Read the pages, not just the links",
+        help="Off by default. When on, the daily Chrome review fetches a few "
+             "of yesterday's pages from this Mac and summarises them locally, "
+             "so bullets describe what a page said instead of inferring it "
+             "from the address. See docs/web-fetch.md.",
+        default="0",
+    ),
+    Setting(
+        key="SCRIBEJAY_WEB_FETCH_MAX_PAGES", section="chrome",
+        name="web_fetch_max_pages", type="int", feature="chrome",
+        label="Pages to read per day",
+        help="How many of the day's pages to fetch. Each one costs a local "
+             "model call, and a Firecrawl credit if the fallback below is in "
+             "use. 1 to 20; anything else falls back to 5.",
+        default="5",
+    ),
+    Setting(
+        key="SCRIBEJAY_WEB_FETCH_TIMEOUT", section="chrome",
+        name="web_fetch_timeout", type="float", feature="chrome",
+        label="Page fetch timeout (seconds)",
+        help="Per-page ceiling. The whole job runs at 5:15 AM, so this times "
+             "the page count is the worst case it can add to the run.",
+        default="20",
+    ),
+    Setting(
+        key="FIRECRAWL_API_KEY", section="chrome", name="firecrawl_api_key",
+        feature="chrome", secret=True,
+        label="Firecrawl API key",
+        help="Optional, and a privacy trade: with a key set, pages this Mac "
+             "cannot render on its own are fetched by Firecrawl instead, which "
+             "sends those addresses and their content off this machine. Leave "
+             "it empty to keep every fetch local.",
+    ),
 
     # ---- transcripts --------------------------------------------------------
     Setting(

@@ -131,7 +131,34 @@ def test_pages_per_domain_keeps_top_paths_by_visits():
 def test_pages_drops_query_strings():
     rows = [{"url": "https://example.com/a/b?utm_source=spam&id=99", "title": "T", "visits": 1}]
     sites = ch._filter_and_group(rows, pages_per_domain=5)
-    assert sites[0]["pages"] == [{"path": "/a/b", "visits": 1}]
+    # The path is stripped of its query string; the url beside it is NOT — it
+    # has to stay fetchable, and some pages need their query to resolve.
+    assert sites[0]["pages"] == [
+        {"path": "/a/b",
+         "url": "https://example.com/a/b?utm_source=spam&id=99",
+         "visits": 1},
+    ]
+
+
+def test_pages_carry_the_full_url_for_fetching():
+    """The path alone cannot be fetched. Enrichment reads this field."""
+    rows = [{"url": "https://example.com/deep/page", "title": "T", "visits": 3}]
+    sites = ch._filter_and_group(rows, pages_per_domain=5)
+    assert sites[0]["pages"][0]["url"] == "https://example.com/deep/page"
+
+
+def test_deduped_path_keeps_the_most_visited_rows_url():
+    """Two urls collapse to one path. The surviving url is the one that came
+    first, which _filter_and_group has already sorted to be the most-visited —
+    so enrichment fetches the variant actually read, not a stray query."""
+    rows = [
+        {"url": "https://example.com/a?v=popular", "title": "T", "visits": 9},
+        {"url": "https://example.com/a?v=rare", "title": "T", "visits": 1},
+    ]
+    sites = ch._filter_and_group(rows, pages_per_domain=5)
+    assert sites[0]["pages"] == [
+        {"path": "/a", "url": "https://example.com/a?v=popular", "visits": 9},
+    ]
 
 
 def test_pages_dedupes_paths_that_differ_only_by_query():

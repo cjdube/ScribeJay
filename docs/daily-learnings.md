@@ -36,6 +36,23 @@ a tab title. A domain alone ("github.com") tells the model nothing; the paths do
 never reaches the log. If a day's review looks thin, check the unfiltered
 history before blaming the prompt.
 
+### Reading the pages, not just the paths — off by default
+
+A path is a guess. `/gemini-api/docs/models` tells the model a model list was
+open; it does not tell it which models. Turning on
+`SCRIBEJAY_WEB_FETCH_ENABLED` lets the task fetch up to
+`SCRIBEJAY_WEB_FETCH_MAX_PAGES` of yesterday's pages, summarize each one
+locally, and hand those summaries to the draft as `page_notes`.
+
+The fetch is done by this Mac. Firecrawl is an opt-in fallback for pages the
+Mac cannot render, and only if `FIRECRAWL_API_KEY` is set — with it on, the
+chosen URLs and their content leave the machine. The raw page text never
+reaches the draft prompt; only the local summaries do. See
+[docs/web-fetch.md](web-fetch.md) for the whole design, the exclusion rules and
+the privacy note.
+
+Off, nothing changes: no request, no key lookup, no extra model call.
+
 ## YouTube
 
 Reads the prior day's Liked videos via `scribejay/sources/youtube.py` — title,

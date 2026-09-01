@@ -200,6 +200,9 @@ One page per job, for when a page reads wrong and you want to know why:
   ClickUp Tasks
 - [docs/daily-learnings.md](docs/daily-learnings.md) — Chrome browsing and
   YouTube Likes
+- [docs/web-fetch.md](docs/web-fetch.md) — off by default: read a few of
+  yesterday's pages so the Chrome review says what they said, not what their
+  URL implied
 - [docs/daily-correspondence.md](docs/daily-correspondence.md) — who yesterday
   was spent writing to
 

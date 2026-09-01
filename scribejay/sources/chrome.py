@@ -146,7 +146,13 @@ def _filter_and_group(rows: list, pages_per_domain: int = 1) -> list:
                 path = _page_path(row["url"])
                 if path in ("", "/") or path in pages:
                     continue
-                pages[path] = {"path": path, "visits": row["visits"]}
+                # The full url rides along beside the path. Nothing model-facing
+                # uses it — compact_sites() still sends paths only — but a page
+                # cannot be fetched from a path, and this is the last point
+                # where the url still exists. Kept from the most-visited row
+                # for the path, since the dedupe above collapses query-string
+                # variants onto whichever came first.
+                pages[path] = {"path": path, "url": row["url"], "visits": row["visits"]}
                 if len(pages) == pages_per_domain:
                     break
             if pages:

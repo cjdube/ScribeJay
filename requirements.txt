@@ -16,5 +16,10 @@ httplib2==0.32.0
 # loads it.
 google-genai==2.11.0
 
+# Optional local page extraction (SCRIBEJAY_WEB_FETCH_ENABLED=1). Imported
+# lazily by sources/web_fetch.py, so an install that never turns web fetch on
+# never loads it.
+trafilatura==2.2.0
+
 # Dev/test only.
 pytest==9.1.1
