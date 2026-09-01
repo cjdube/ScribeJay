@@ -2,7 +2,7 @@
 
 Every API key and token ScribeJay holds lives here, under one Keychain
 service (`com.scribejay`) with the setting's key as the account name. Nothing
-secret is written to `~/.scribejay/config.toml`, which is what makes that file
+secret is written to `~/.scribejay/config.json`, which is what makes that file
 safe to back up, sync, or copy to a second machine.
 
 `scribejay/core/http.py:resolve_key` is the only caller on the read path, and

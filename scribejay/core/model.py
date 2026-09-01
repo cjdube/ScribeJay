@@ -22,7 +22,6 @@ Usage:
 
 import json
 import logging
-import os
 import re
 import time
 from pathlib import Path
@@ -33,8 +32,6 @@ import requests
 from scribejay.core import config
 from scribejay.core.backends.gemini import GEMINI_DEFAULT_MODEL, _gemini_chat
 from scribejay.core.backends.openrouter import _openrouter_chat
-
-_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def backend(task_key: str) -> str | None:

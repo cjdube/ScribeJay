@@ -18,9 +18,12 @@ from scribejay.core.google import build_service
 # task importing the other.
 SESSION_BLOCK_SOURCE_PREFIX = "claude-time:"
 
-# Single source of truth for category -> (colorId, color name), defined in
-# config/preferences.json. Also used by scribejay/calendar_colorizer.py to build
-# its classification prompt.
+# Single source of truth for category -> (colorId, color name). The entries are
+# the `calendar` section of ~/.scribejay/config.json, which replaces
+# core/schema.py:STRUCTURED_DEFAULTS wholesale when present. NOT
+# config/preferences.json — that is legacy, and scribejay/migrate.py is its only
+# reader left. Also used by scribejay/calendar_colorizer.py to build its
+# classification prompt.
 CATEGORY_COLORS = {
     c["name"]: (c["color_id"], c["color_name"]) for c in config.calendar_categories()
 }

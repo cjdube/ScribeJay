@@ -188,3 +188,24 @@ def test_env_example_documents_every_key_and_agrees_on_defaults():
         and documented[s.key].replace("~", str(Path.home())) != s.default
     }
     assert not disagree, f".env.example disagrees with the schema: {disagree}"
+
+
+# Only up to what a sentence would plausibly spell out; a count past this is a
+# KeyError, which is the right kind of loud.
+_COUNT_WORDS = {5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten"}
+
+
+def test_env_example_states_the_real_number_of_secrets():
+    """The same file's prose drifts too, and the key cross-check above cannot
+    see it: `.env.example` said "the six secrets" while the schema held seven,
+    from the run that added OPENROUTER_API_KEY. A sentence a human reads before
+    anything runs is worth one assertion.
+    """
+    from pathlib import Path
+
+    count = len([s for s in schema.SETTINGS if s.secret])
+    text = (Path(schema.__file__).resolve().parent.parent.parent
+            / "config" / ".env.example").read_text()
+
+    assert f"the {_COUNT_WORDS[count]} secrets live in the macOS Keychain" in text, (
+        f"the schema holds {count} secrets; .env.example says otherwise")
