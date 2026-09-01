@@ -341,8 +341,7 @@ SETTINGS: tuple[Setting, ...] = (
         name="web_fetch_max_pages", type="int", feature="chrome",
         label="Pages to read per day",
         help="How many of the day's pages to fetch. Each one costs a local "
-             "model call, and a Firecrawl credit if the fallback below is in "
-             "use. 1 to 20; anything else falls back to 5.",
+             "model call. 1 to 20; anything else falls back to 5.",
         default="5",
     ),
     Setting(
@@ -353,16 +352,6 @@ SETTINGS: tuple[Setting, ...] = (
              "the page count is the worst case it can add to the run.",
         default="20",
     ),
-    Setting(
-        key="FIRECRAWL_API_KEY", section="chrome", name="firecrawl_api_key",
-        feature="chrome", secret=True,
-        label="Firecrawl API key",
-        help="Optional, and a privacy trade: with a key set, pages this Mac "
-             "cannot render on its own are fetched by Firecrawl instead, which "
-             "sends those addresses and their content off this machine. Leave "
-             "it empty to keep every fetch local.",
-    ),
-
     # ---- transcripts --------------------------------------------------------
     Setting(
         key="CLAUDE_CONFIG_DIR", section="transcripts", name="claude_dir",

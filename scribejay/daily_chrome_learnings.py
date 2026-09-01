@@ -219,8 +219,8 @@ def page_notes_block(summaries: list) -> str:
     return "\n".join(lines)
 
 
-def enrich(sites: list, logger, backend: str | None, limit: int,
-           fetch_backend: str = "auto") -> tuple[str, list, dict]:
+def enrich(sites: list, logger, backend: str | None,
+           limit: int) -> tuple[str, list, dict]:
     """Pick pages, fetch them, summarise them.
 
     Returns (notes_block, summaries, stats). The block is the compacted text
@@ -243,8 +243,7 @@ def enrich(sites: list, logger, backend: str | None, limit: int,
             logger.info("web fetch: no page was eligible to fetch")
             return "", [], stats
 
-        pages, fetch_stats = web_fetch.fetch_pages(
-            candidates, backend=fetch_backend, logger_=logger)
+        pages, fetch_stats = web_fetch.fetch_pages(candidates, logger_=logger)
         stats.update(fetch_stats)
         stats["fetched"] = len(pages)
         logger.info(f"web fetch: {len(pages)} of {len(candidates)} pages in "
@@ -357,11 +356,9 @@ def main() -> int:
     parser.add_argument("--web-fetch", dest="web_fetch", default="auto",
                         choices=("auto", "on", "off"),
                         help="override the saved page-fetch toggle for this run")
-    parser.add_argument("--bakeoff", action="store_true",
-                        help="draft the same day four ways and score them; implies --dry-run")
     args = parser.parse_args()
 
-    dry_run = args.dry_run or args.bakeoff
+    dry_run = args.dry_run
 
     # A dry run gets its own log file. cli/doctor.py:last_run reads
     # logs/daily_chrome_learnings.log for "Starting"/"run complete" to decide
@@ -378,14 +375,6 @@ def main() -> int:
     try:
         days = _days(args)
         fetch = web_fetch_enabled(None if args.web_fetch == "auto" else args.web_fetch)
-
-        if args.bakeoff:
-            from scribejay import bakeoff
-
-            for day in days:
-                bakeoff.run(day, logger)
-            logger.info("Daily chrome learnings run complete")
-            return 0
 
         if fetch and len(days) > 1:
             logger.warning(f"backfilling {len(days)} days with web fetch on — "

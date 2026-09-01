@@ -21,8 +21,7 @@ suite-wide rather than per-test — a missed convention has to stay harmless:
   call, and drops a .lock sidecar beside it. Redirected below.
 - ClickUp and Gemini are both live network egress the suite must never reach.
 - `sources/web_fetch.py` fetches arbitrary web pages the developer actually
-  visited, and — with a Firecrawl key in the Keychain — spends real money
-  doing it. Both backends are stubbed suite-wide, and its on-disk cache is
+  visited. The fetch is stubbed suite-wide, and its on-disk cache is
   redirected so a test cannot read or poison the real one.
 - `core/config.py` reads the user's real ~/.scribejay/config.json AND their
   real config/.env at import — and the .env is the top resolution layer, so
@@ -378,15 +377,13 @@ class _WebFetchEgress(BaseException):
 
 @pytest.fixture(autouse=True)
 def _block_web_fetch_egress(tmp_path, monkeypatch):
-    """Stub both fetch backends, and redirect the cache off the real one.
+    """Stub the fetch, and redirect the cache off the real one.
 
-    Two different kinds of harm here, which is why both halves are suite-wide:
-    the local backend GETs whatever url a fixture happens to carry, and the
-    Firecrawl backend resolves the developer's real key through the same layers
-    a scheduled run does — every call is billed. The cache matters too: left
-    alone, a test would read ~/.scribejay/web_fetch_cache.json and could write
-    fixture text into it, which a later real run would then serve as if it had
-    been fetched. tests/test_web_fetch.py re-patches these per test.
+    Both halves are suite-wide: the fetcher GETs whatever url a fixture happens
+    to carry, and the cache matters too — left alone, a test would read
+    ~/.scribejay/web_fetch_cache.json and could write fixture text into it,
+    which a later real run would then serve as if it had been fetched.
+    tests/test_web_fetch.py re-patches these per test.
     """
     def _blocked(name):
         def _raise(*a, **k):
@@ -396,6 +393,5 @@ def _block_web_fetch_egress(tmp_path, monkeypatch):
         return _raise
 
     monkeypatch.setattr(_web_fetch, "fetch_local", _blocked("fetch_local"))
-    monkeypatch.setattr(_web_fetch, "fetch_firecrawl", _blocked("fetch_firecrawl"))
     monkeypatch.setattr(_web_fetch, "cache_path",
                         lambda: tmp_path / "web_fetch_cache.json")

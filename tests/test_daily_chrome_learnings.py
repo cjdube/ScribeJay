@@ -105,14 +105,13 @@ def _stub_fetch(monkeypatch, pages, stats=None):
     monkeypatch.setattr(web_fetch, "fetch_pages",
                         lambda candidates, **k: (pages, stats or {
                             "attempted": len(candidates), "fetched": len(pages),
-                            "failed": 0, "cached": 0, "quota_stopped": False,
-                            "seconds": 0.1}))
+                            "failed": 0, "cached": 0, "seconds": 0.1}))
 
 
 def _page(text="Ollama now supports structured outputs via a JSON schema."):
     return {"domain": "ollama.com", "path": "/blog/structured-outputs",
             "url": "https://ollama.com/blog/structured-outputs",
-            "title": "Structured outputs", "text": text, "backend": "local"}
+            "title": "Structured outputs", "text": text}
 
 
 def test_page_notes_reach_the_draft_prompt(fetchable, monkeypatch):
@@ -235,7 +234,7 @@ def test_a_fetch_failure_still_produces_the_ordinary_draft(fetchable, monkeypatc
     from scribejay.sources import web_fetch
 
     def _boom(*a, **k):
-        raise RuntimeError("firecrawl exploded")
+        raise RuntimeError("the fetcher exploded")
 
     monkeypatch.setattr(web_fetch, "fetch_pages", _boom)
     assert dc.main() == 0
@@ -250,8 +249,8 @@ def _count_fetches(monkeypatch):
     calls = []
     monkeypatch.setattr(web_fetch, "fetch_pages",
                         lambda candidates, **k: calls.append(candidates) or ([], {
-                            "attempted": 0, "fetched": 0, "failed": 0, "cached": 0,
-                            "quota_stopped": False, "seconds": 0.0}))
+                            "attempted": 0, "fetched": 0, "failed": 0,
+                            "cached": 0, "seconds": 0.0}))
     return calls
 
 

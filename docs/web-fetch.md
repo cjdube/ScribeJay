@@ -67,7 +67,7 @@ not five tabs of the same doc site.
 
 ## Who does the fetching — `sources/web_fetch.py`
 
-**Local first, and free.** `requests.get` with an explicit timeout, a plain user
+**This Mac, and nowhere else.** `requests.get` with an explicit timeout, a plain user
 agent, a response-size cap, and text extracted by
 [trafilatura](https://trafilatura.readthedocs.io/) — an optional extra, imported
 lazily. Not installed reads as "no text", never as an ImportError up through a
@@ -78,24 +78,22 @@ lazily. Not installed reads as "no text", never as an ImportError up through a
 retry, no alternate user agent, and no stealth proxy — routing around a block is
 exactly the scraping-SaaS workaround AGENTS.md rules out.
 
-**A refusal also ends the backend chain.** `fetch_page` used to treat a
-`blocked:` error like any other failure and move on to Firecrawl, which is the
-same workaround wearing a different hat — observed live, where a local 403 from
-arstechnica.com was followed by a successful Firecrawl fetch of the article. A
-refusal now stops the chain. Every other error — a timeout, a DNS miss, a
-JavaScript shell that rendered nothing — still earns the next backend a try.
+**There is no second fetcher, on purpose.** A hosted scraping service was
+measured against this one and lost — see the bake-off below — and a fallback
+that runs when the local fetch is refused is the same workaround wearing a
+different hat. That was live for a while: a 403 from arstechnica.com was
+followed by a successful hosted fetch of the same article. Now a refusal is
+simply the end of that page.
 
-**Firecrawl, only if you ask for it.** With `FIRECRAWL_API_KEY` set, a page
-whose local fetch came back thin (a JavaScript shell, mostly) is retried through
-Firecrawl. `proxy: "basic"` only — never a stealth mode — and the provider cache
-is off. HTTP 402 or 429 raises `QuotaExhausted`, which stops every further
-Firecrawl call for that run and keeps the successes already in hand.
+**A shell is not a page.** A fetch that succeeds but yields under
+`MIN_USEFUL_CHARS` (400) of readable text is a cookie banner or a JavaScript app
+that never rendered. It reads as an error, so no model call is spent describing
+page furniture. The check runs on cache reads too, so one thin page stored today
+is not summarized for the next fourteen days.
 
-**A local disk cache** at `~/.scribejay/web_fetch_cache.json`, keyed by backend
-and URL, pruned of anything older than 14 days on every write. It is what makes
-a backfill affordable and a re-run free. The two backends never share an entry,
-so comparing local text against Firecrawl text for the same URL compares two
-fetchers rather than one fetcher against itself.
+**A local disk cache** at `~/.scribejay/web_fetch_cache.json`, keyed by URL and
+pruned of anything older than 14 days on every write. It is what makes a
+backfill affordable and a re-run free.
 
 Run it alone, like any other source module:
 
@@ -159,9 +157,8 @@ whatever was fetched.
 
 | Setting | What goes out |
 |---|---|
-| `SCRIBEJAY_WEB_FETCH_ENABLED=0` | Nothing. No request, no key lookup, no extra model call. |
-| Enabled, no Firecrawl key | An ordinary HTTP GET from this Mac to each chosen page, as a browser would make. |
-| Enabled, Firecrawl key set | The above, **plus** the chosen URLs sent to `api.firecrawl.dev` for any page the Mac could not read, and that page's content sent back. |
+| `SCRIBEJAY_WEB_FETCH_ENABLED=0` | Nothing. No request, no extra model call. |
+| `SCRIBEJAY_WEB_FETCH_ENABLED=1` | An ordinary HTTP GET from this Mac to each chosen page, as a browser would make. Scheme, host and path only. Nothing goes to any third party. |
 
 Summarizing stays wherever `SCRIBEJAY_LLM_BACKEND` points — local by default,
 and a cloud backend there sends the summaries out too
@@ -169,7 +166,7 @@ and a cloud backend there sends the summaries out too
 
 ## Settings
 
-See [docs/configuration.md](configuration.md#web-fetch--four-chrome-settings).
+See [docs/configuration.md](configuration.md#web-fetch--three-chrome-settings).
 
 ## Running it by hand
 
@@ -184,8 +181,9 @@ reads that folder.
 
 ## The bake-off
 
-Whether this is worth turning on was decided by measurement, not by argument.
-Three ways of drafting the same day were compared over five days
+Whether this is worth turning on — and whether a paid scraping service was
+worth paying for — was decided by measurement, not by argument. Three ways of
+drafting the same day were compared over five days
 (2026-08-13, -19, -21, -26 and -27, the five weekdays of the prior month with
 the most fetchable pages):
 
@@ -193,7 +191,7 @@ the most fetchable pages):
 |---|---|---|
 | A | none | paths and titles — the behaviour with the feature off |
 | B | local | local summaries — what this doc describes |
-| C | Firecrawl | local summaries |
+| C | a hosted scraping service | local summaries |
 
 One Chrome gather and one fetch per day, shared by every arm, so the comparison
 measures the arms rather than the model's run-to-run variance.
@@ -203,18 +201,18 @@ measures the arms rather than the model's run-to-run variance.
 The first run's page picker rejected what looked private and fetched everything
 else. Over those five days it spent **10 of its 25 picks on sign-in walls** —
 Yahoo Mail, Airbnb, TripIt, the Cloudflare dashboard, a hospital patient portal
-— and most of the rest on receipts and search forms. Firecrawl was asked to
-fetch all of them. It is not signed in as the user, so it returned login pages
-rather than private data, but the urls themselves went out, and several carried
-identifiers: an order id, a reservation code, an account id, an SSO `state`
-token.
+— and most of the rest on receipts and search forms. Arm C was asked to fetch
+all of them. The service is not signed in as the user, so it returned login
+pages rather than private data, but the urls themselves went out, and several
+carried identifiers: an order id, a reservation code, an account id, an SSO
+`state` token.
 
 That is why `candidate_urls` now works as an allow list, and why `_fetch_url`
 strips the query string. On the same five days the fixed picker chose **24 real
 articles out of 25**. A reject list fails open; the next portal the user signs
 in to is not on it.
 
-It also invalidated the first run's headline. Firecrawl looked like the better
+It also invalidated the first run's headline. Arm C looked like the better
 fetcher (20 pages to local's 12) largely by successfully rendering login
 screens, which were then dropped as too thin to describe.
 
@@ -255,14 +253,22 @@ correctly ignored all five, but each cost a fetch and a model call.
 
 ### The numbers, after the fix
 
-| | local | Firecrawl |
+| | local | hosted |
 |---|---|---|
 | pages fetched, of 25 | 18 | 22 |
 | usable page notes | 16 | 17 |
 | seconds spent fetching | 17.2 | 90.8 |
 
-Firecrawl bought four extra pages and one extra note, for 25 credits and 5.3x
-the wall clock.
+The hosted fetcher bought four extra pages and one extra note, for 25 credits
+and 5.3x the wall clock. On every page checked its markdown still carried page
+furniture — share bars, newsletter pitches, related-article lists — and
+TechCrunch came back as a Cloudflare bot check. Set against
+AGENTS.md's "no paid SaaS dependencies for data", that is not a close call.
+
+**So it is gone.** `FIRECRAWL_API_KEY`, the backend chain, the quota handling
+and the bake-off harness were all removed once this was written down. The
+fetcher is one function now. These numbers are the record of why there is
+nothing to configure.
 
 | Arm | bullets | grounded | specific | note chars |
 |---|---|---|---|---|
@@ -279,7 +285,7 @@ automated score cannot separate them; the blind read decides.
 
 ### The one arm that did settle: raw excerpts lose
 
-A fourth arm fed Firecrawl's page text into the draft prompt raw, at the 8,000
+A fourth arm fed the hosted service's page text into the draft prompt raw, at the 8,000
 character budget the rejected design proposed. It is the shape the
 untrusted-content rule forbids, and it ran once to measure what that rule
 costs.

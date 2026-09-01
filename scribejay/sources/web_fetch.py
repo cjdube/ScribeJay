@@ -4,25 +4,23 @@ The daily Chrome review knows which pages were read but not what they said —
 `sources/chrome.py` hands on a domain, a title and a path, and the model has to
 guess the rest. This module closes that gap for a handful of pages a day.
 
-**Local first, on purpose.** AGENTS.md's data-sourcing policy prefers free and
+**Local, and only local.** AGENTS.md's data-sourcing policy prefers free and
 official sources and rules out paid SaaS for data, and ScribeJay's whole
-premise is that nothing leaves the Mac unless the user opts in. So the default
-backend is an ordinary `requests.get` from this machine — the same request the
-browser already made — with readable text pulled out by `trafilatura`.
-
-**Firecrawl is the opt-in fallback**, for the pages a plain GET cannot render:
-a JavaScript app that ships an empty shell. It runs only when a
-FIRECRAWL_API_KEY is set, and only after the local attempt came back too thin.
-Switching it on means the selected urls *and their content* leave the machine;
-`docs/web-fetch.md` says so in the words a user reads.
+premise is that nothing leaves the Mac unless the user opts in. So the fetch is
+an ordinary `requests.get` from this machine — the same request the browser
+already made — with readable text pulled out by `trafilatura`. A hosted scraper
+was measured against it and lost; `docs/web-fetch.md` records the numbers.
 
 **A block is a no, not a puzzle.** A 403, a bot wall, or a robots-style refusal
-means this page is skipped. ScribeJay does not retry through a stealth proxy,
-and `proxy: "basic"` is the only proxy setting Firecrawl is ever asked for.
+means this page is skipped. ScribeJay does not retry a refusal by another route.
+
+**A shell is not a page.** A "successful" fetch under MIN_USEFUL_CHARS is a
+cookie banner or a JavaScript app that never rendered. It reads as an error
+here, so no model call is spent summarising page furniture.
 
 **Results are cached on disk** under `~/.scribejay`, keyed by url and pruned to
 14 days. Re-running a day — a backfill, or the same day twice while comparing
-output — then costs no request and no credit.
+output — then costs no second request.
 
 Everything degrades to `{"error": ...}` rather than raising, like every other
 source module.
@@ -40,13 +38,11 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from scribejay.core import config
-from scribejay.core.http import http_error, print_result, resolve_key
+from scribejay.core.http import http_error, print_result
 from scribejay.core.store import atomic_write_json, load_json, locked
 from scribejay.core.urls import safe_url
 
 logger = logging.getLogger(__name__)
-
-FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape"
 
 # What one page may contribute. Bounds the summarize call's prompt, and bounds
 # how much untrusted text is ever held at once. Deliberately smaller than the
@@ -55,14 +51,9 @@ FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape"
 MAX_TEXT_CHARS = 4000
 
 # Below this, a "successful" fetch is a shell — a cookie banner, a nav bar, a
-# JavaScript app that never rendered. The local backend returning this little
-# is what makes Firecrawl worth trying, if the user has switched it on.
+# JavaScript app that never rendered. Treated as a failure so the page is
+# dropped rather than costing a model call to summarise nothing.
 MIN_USEFUL_CHARS = 400
-
-# Every refusal error starts with this, so fetch_page can tell "the site said
-# no" apart from "this backend could not manage it" by reading the string
-# rather than by knowing which status codes fetch_local checks.
-REFUSAL_PREFIX = "blocked: "
 
 # A page bigger than this is a download, a dump or a trap. Read in chunks and
 # stop, rather than pulling it all into memory to then truncate.
@@ -85,22 +76,15 @@ def cache_path():
     return config.resolve_path(CACHE_NAME)
 
 
-def _cache_key(url: str, backend: str) -> str:
-    """Backend is part of the key. The whole point of the bake-off is that
-    local and Firecrawl return different text for the same url, and one cache
-    entry for both would quietly serve whichever ran first."""
-    return f"{backend}::{url}"
-
-
-def _cache_get(url: str, backend: str):
-    entry = load_json(cache_path(), {}).get(_cache_key(url, backend))
+def _cache_get(url: str):
+    entry = load_json(cache_path(), {}).get(url)
     if not isinstance(entry, dict) or "text" not in entry:
         return None
     return {"url": url, "title": entry.get("title", ""), "text": entry["text"],
-            "backend": backend, "cached": True}
+            "cached": True}
 
 
-def _cache_put(url: str, backend: str, title: str, text: str) -> None:
+def _cache_put(url: str, title: str, text: str) -> None:
     """Store one result and prune anything past the TTL. Pruning on write is
     the convention for every polling store here: nothing else ever runs, so a
     store that only grows is a store that grows forever."""
@@ -112,7 +96,7 @@ def _cache_put(url: str, backend: str, title: str, text: str) -> None:
             data = load_json(path, {})
             data = {k: v for k, v in data.items()
                     if isinstance(v, dict) and v.get("fetched_at", "") >= cutoff}
-            data[_cache_key(url, backend)] = {
+            data[url] = {
                 "title": title, "text": text, "fetched_at": now.isoformat(),
             }
             atomic_write_json(path, data)
@@ -121,7 +105,7 @@ def _cache_put(url: str, backend: str, title: str, text: str) -> None:
         logger.warning("could not write the web-fetch cache at %s: %s", path, e)
 
 
-# ---- local backend ----------------------------------------------------------
+# ---- the fetch --------------------------------------------------------------
 
 def _extract(html: str, url: str) -> tuple[str, str]:
     """(title, text) from raw HTML, or ("", "") when nothing readable is there.
@@ -137,7 +121,7 @@ def _extract(html: str, url: str) -> tuple[str, str]:
         from trafilatura.metadata import extract_metadata
     except ImportError:
         logger.warning("trafilatura is not installed — install the 'webfetch' "
-                       "extra to use the local fetcher")
+                       "extra to use the fetcher")
         return "", ""
 
     text = trafilatura.extract(html, url=url, include_comments=False,
@@ -166,7 +150,7 @@ def fetch_local(url: str, timeout: float) -> dict:
         ) as response:
             if response.status_code in (401, 403, 407, 429, 451):
                 # A refusal. Recorded and dropped — never retried by another route.
-                return {"error": f"{REFUSAL_PREFIX}HTTP {response.status_code}"}
+                return {"error": f"blocked: HTTP {response.status_code}"}
             response.raise_for_status()
 
             content_type = (response.headers.get("Content-Type") or "").lower()
@@ -189,69 +173,14 @@ def fetch_local(url: str, timeout: float) -> dict:
     return {"title": title, "text": text[:MAX_TEXT_CHARS]}
 
 
-# ---- firecrawl backend ------------------------------------------------------
-
-class QuotaExhausted(Exception):
-    """Raised so the caller stops asking. A 402 or a 429 means every further
-    request this run is wasted latency at 5:15 AM, and partial results already
-    in hand are worth keeping."""
-
-
-def fetch_firecrawl(url: str, timeout: float, api_key: str | None = None) -> dict:
-    """Fetch through Firecrawl. `{"title","text"}` or an error.
-
-    `proxy: "basic"` and nothing else — the stealth modes exist to get past a
-    site that said no, and AGENTS.md rules that out. `maxAge: 0` disables
-    Firecrawl's own cache so a credit buys today's page, not a stale one; this
-    module's disk cache is what stops the repeat spending.
-    """
-    key = resolve_key("FIRECRAWL_API_KEY", api_key)
-    if not key:
-        return {"error": "FIRECRAWL_API_KEY not set (checked arg, config/.env, "
-                         "env var, Keychain)"}
-    try:
-        response = requests.post(
-            FIRECRAWL_SCRAPE_URL,
-            timeout=timeout,
-            headers={"Authorization": f"Bearer {key}",
-                     "Content-Type": "application/json"},
-            json={"url": url, "formats": ["markdown"], "onlyMainContent": True,
-                  "proxy": "basic", "maxAge": 0, "timeout": int(timeout * 1000)},
-        )
-        if response.status_code in (402, 429):
-            raise QuotaExhausted(f"firecrawl HTTP {response.status_code}")
-        response.raise_for_status()
-        payload = response.json()
-    except QuotaExhausted:
-        raise
-    except Exception as e:
-        return http_error(e)
-
-    if not payload.get("success", True):
-        return {"error": f"firecrawl: {payload.get('error', 'unsuccessful response')}"}
-    data = payload.get("data") or {}
-    text = (data.get("markdown") or "").strip()
-    if not text:
-        return {"error": "firecrawl returned no markdown"}
-    title = ((data.get("metadata") or {}).get("title") or "")
-    return {"title": title, "text": text[:MAX_TEXT_CHARS]}
-
-
 # ---- the seam ---------------------------------------------------------------
 
-def fetch_page(url: str, timeout: float | None = None, backend: str = "auto",
+def fetch_page(url: str, timeout: float | None = None,
                use_cache: bool = True) -> dict:
-    """One page's readable text, from whichever backend can get it.
+    """One page's readable text.
 
-    `backend`:
-      - "auto"      local first, Firecrawl only if local came back too thin
-                    AND a key is set. The production path.
-      - "local"     this machine only. Never spends a credit.
-      - "firecrawl" Firecrawl only. Used by the bake-off to compare fairly.
-
-    Returns {"url", "title", "text", "backend", "cached"} or {"error", "url"}.
-    Never raises except QuotaExhausted, which the caller must catch to stop
-    spending.
+    Returns {"url", "title", "text", "cached"} or {"error", "url"}. Never
+    raises — a failing source reads as empty to callers, like every other one.
     """
     url = safe_url(url)
     if not url:
@@ -259,110 +188,69 @@ def fetch_page(url: str, timeout: float | None = None, backend: str = "auto",
     if timeout is None:
         timeout = float(config.getenv("SCRIBEJAY_WEB_FETCH_TIMEOUT"))
 
-    attempts = {"auto": ("local", "firecrawl"),
-                "local": ("local",),
-                "firecrawl": ("firecrawl",)}.get(backend)
-    if attempts is None:
-        return {"error": f"unknown backend: {backend}", "url": url}
-
-    last_error = "no backend ran"
-    for name in attempts:
-        if use_cache:
-            hit = _cache_get(url, name)
-            if hit:
-                return hit
-
-        if name == "firecrawl" and not resolve_key("FIRECRAWL_API_KEY"):
-            # Not an error in "auto": it is the ordinary state of an install
-            # that never switched Firecrawl on.
-            last_error = last_error if backend == "auto" else "FIRECRAWL_API_KEY not set"
-            continue
-
-        result = fetch_local(url, timeout) if name == "local" else \
-            fetch_firecrawl(url, timeout)
-
+    hit = _cache_get(url) if use_cache else None
+    if hit is None:
+        result = fetch_local(url, timeout)
         if "error" in result:
-            last_error = result["error"]
-            logger.info("web fetch (%s) failed for %s: %s", name, url, last_error)
-            # A refusal is the site's answer, not this backend's failure. Trying
-            # the next one is exactly the "route around a block through scraping
-            # SaaS" that AGENTS.md rules out, and it was happening: on
-            # arstechnica.com a local 403 was followed by a successful Firecrawl
-            # fetch. Every other error — a timeout, a DNS miss, a JavaScript
-            # shell — is still worth another backend.
-            if last_error.startswith(REFUSAL_PREFIX):
-                logger.info("web fetch: %s refused this page; not trying another "
-                            "backend", url)
-                break
-            continue
+            logger.info("web fetch failed for %s: %s", url, result["error"])
+            return {"error": result["error"], "url": url}
+        # Stored before the thinness check below, not after: the bytes were
+        # already spent, and a shell today is still a shell on the next re-run.
+        _cache_put(url, result.get("title", ""), result["text"])
+        hit = {"url": url, "title": result.get("title", ""),
+               "text": result["text"], "cached": False}
 
-        text = result["text"]
-        if len(text) < MIN_USEFUL_CHARS and name != attempts[-1]:
-            # Thin, and there is another backend to try. Cache it anyway — the
-            # bytes were already paid for, and the bake-off's "local" arm wants
-            # exactly this result.
-            _cache_put(url, name, result.get("title", ""), text)
-            last_error = f"only {len(text)} chars of readable text"
-            logger.info("web fetch (%s) thin for %s: %s", name, url, last_error)
-            continue
+    # After the cache, so a thin page stored earlier is rejected on every later
+    # read too. Checking only the fresh path would let one cached shell be
+    # summarised for the next fourteen days.
+    if len(hit["text"]) < MIN_USEFUL_CHARS:
+        error = f"only {len(hit['text'])} chars of readable text"
+        logger.info("web fetch thin for %s: %s", url, error)
+        return {"error": error, "url": url}
 
-        _cache_put(url, name, result.get("title", ""), text)
-        return {"url": url, "title": result.get("title", ""), "text": text,
-                "backend": name, "cached": False}
-
-    return {"error": last_error, "url": url}
+    return hit
 
 
 def fetch_pages(candidates: list, timeout: float | None = None,
-                backend: str = "auto", logger_=None) -> tuple[list, dict]:
+                logger_=None) -> tuple[list, dict]:
     """Fetch every candidate. Returns (pages, stats).
 
     Partial success is success: a page that fails is dropped and the rest are
-    returned. A quota refusal stops the loop and keeps what is already in hand,
-    because every further request would fail the same way.
+    returned.
     """
     log = logger_ or logger
     pages, stats = [], {"attempted": 0, "fetched": 0, "failed": 0,
-                        "cached": 0, "quota_stopped": False,
-                        "seconds": 0.0}
+                        "cached": 0, "seconds": 0.0}
     started = time.monotonic()
     for candidate in candidates:
         stats["attempted"] += 1
-        try:
-            result = fetch_page(candidate["url"], timeout=timeout, backend=backend)
-        except QuotaExhausted as e:
-            log.warning("web fetch stopped early: %s — keeping the %d page(s) "
-                        "already fetched", e, len(pages))
-            stats["quota_stopped"] = True
-            break
+        result = fetch_page(candidate["url"], timeout=timeout)
         if "error" in result:
             stats["failed"] += 1
             continue
         stats["fetched"] += 1
         stats["cached"] += 1 if result.get("cached") else 0
-        pages.append({**candidate, "title": result.get("title") or candidate.get("title", ""),
-                      "text": result["text"], "backend": result["backend"]})
+        pages.append({**candidate,
+                      "title": result.get("title") or candidate.get("title", ""),
+                      "text": result["text"]})
     stats["seconds"] = round(time.monotonic() - started, 1)
+    if stats["failed"]:
+        log.info("web fetch: %d of %d page(s) could not be read",
+                 stats["failed"], stats["attempted"])
     return pages, stats
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("url")
-    parser.add_argument("--backend", default="auto",
-                        choices=("auto", "local", "firecrawl"))
     parser.add_argument("--no-cache", action="store_true",
                         help="fetch for real even if this url is cached")
     parser.add_argument("--timeout", type=float, default=None)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    try:
-        result = fetch_page(args.url, timeout=args.timeout, backend=args.backend,
-                            use_cache=not args.no_cache)
-    except QuotaExhausted as e:
-        result = {"error": str(e), "url": args.url}
-    return print_result(result)
+    return print_result(fetch_page(args.url, timeout=args.timeout,
+                                   use_cache=not args.no_cache))
 
 
 if __name__ == "__main__":

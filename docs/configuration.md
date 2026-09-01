@@ -60,11 +60,11 @@ someone had decided.
 
 ## Secrets live in the macOS Keychain
 
-Eight keys never touch the settings file:
+Seven keys never touch the settings file:
 
 `GEMINI_API_KEY` (which also answers to `GOOGLE_API_KEY`), `OPENROUTER_API_KEY`,
 `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REFRESH_TOKEN`,
-`CLICKUP_API_TOKEN`, `NTFY_TOKEN`, `FIRECRAWL_API_KEY`.
+`CLICKUP_API_TOKEN`, `NTFY_TOKEN`.
 
 They are stored as generic passwords under service `com.scribejay`, read through
 `scribejay/core/secrets.py`, which shells out to the Apple-signed
@@ -115,7 +115,7 @@ new setting cannot be added without describing it.
 
 Adding a setting is one row plus one line in `config/.env.example`.
 
-## Web fetch — four Chrome settings
+## Web fetch — three Chrome settings
 
 Off by default. On, `daily_chrome_learnings` reads a few of yesterday's pages
 instead of guessing from their URLs
@@ -123,10 +123,12 @@ instead of guessing from their URLs
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
-| `SCRIBEJAY_WEB_FETCH_ENABLED` | bool | `0` | The whole feature. Off means no request, no key lookup, no extra model call. |
+| `SCRIBEJAY_WEB_FETCH_ENABLED` | bool | `0` | The whole feature. Off means no request and no extra model call. |
 | `SCRIBEJAY_WEB_FETCH_MAX_PAGES` | int | `5` | Pages fetched per day. Each one costs a fetch and a local model call, so this is the cost dial. Read defensively: outside 1–20 logs a WARNING and falls back to 5. |
-| `SCRIBEJAY_WEB_FETCH_TIMEOUT` | float | `20` | Seconds per page, for both backends. |
-| `FIRECRAWL_API_KEY` | secret | none | Opt-in fallback for pages this Mac cannot render. **Set it and the chosen URLs and their content leave the machine.** Unset, fetching is entirely local. |
+| `SCRIBEJAY_WEB_FETCH_TIMEOUT` | float | `20` | Seconds per page. |
+
+There is no third-party key here. Fetching is done by this Mac; a hosted
+scraper was measured and dropped ([docs/web-fetch.md](web-fetch.md#the-bake-off)).
 
 These are `feature="chrome"` rows, not a [feature](features.md) of their own —
 a feature is a source you can decline, and this enriches a source you already

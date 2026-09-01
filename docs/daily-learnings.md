@@ -49,14 +49,12 @@ entry, one line per page, with the summary kept whole and the title linked. The
 bullets above it are still the model's compression — that is what makes them
 specific — and the section below is where the detail survives.
 
-The fetch is done by this Mac. Firecrawl is an opt-in fallback for pages the
-Mac cannot render, and only if `FIRECRAWL_API_KEY` is set — with it on, the
-chosen URLs and their content leave the machine. The raw page text never
-reaches the draft prompt; only the local summaries do. See
-[docs/web-fetch.md](web-fetch.md) for the whole design, the exclusion rules and
-the privacy note.
+The fetch is done by this Mac and nowhere else — there is no hosted scraper and
+no key to set. The raw page text never reaches the draft prompt; only the local
+summaries do. See [docs/web-fetch.md](web-fetch.md) for the whole design, the
+exclusion rules and the privacy note.
 
-Off, nothing changes: no request, no key lookup, no extra model call.
+Off, nothing changes: no request, no extra model call.
 
 ## YouTube
 
