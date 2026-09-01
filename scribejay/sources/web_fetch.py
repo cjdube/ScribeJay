@@ -59,6 +59,11 @@ MAX_TEXT_CHARS = 4000
 # is what makes Firecrawl worth trying, if the user has switched it on.
 MIN_USEFUL_CHARS = 400
 
+# Every refusal error starts with this, so fetch_page can tell "the site said
+# no" apart from "this backend could not manage it" by reading the string
+# rather than by knowing which status codes fetch_local checks.
+REFUSAL_PREFIX = "blocked: "
+
 # A page bigger than this is a download, a dump or a trap. Read in chunks and
 # stop, rather than pulling it all into memory to then truncate.
 MAX_RESPONSE_BYTES = 3_000_000
@@ -161,7 +166,7 @@ def fetch_local(url: str, timeout: float) -> dict:
         ) as response:
             if response.status_code in (401, 403, 407, 429, 451):
                 # A refusal. Recorded and dropped — never retried by another route.
-                return {"error": f"blocked: HTTP {response.status_code}"}
+                return {"error": f"{REFUSAL_PREFIX}HTTP {response.status_code}"}
             response.raise_for_status()
 
             content_type = (response.headers.get("Content-Type") or "").lower()
@@ -279,6 +284,16 @@ def fetch_page(url: str, timeout: float | None = None, backend: str = "auto",
         if "error" in result:
             last_error = result["error"]
             logger.info("web fetch (%s) failed for %s: %s", name, url, last_error)
+            # A refusal is the site's answer, not this backend's failure. Trying
+            # the next one is exactly the "route around a block through scraping
+            # SaaS" that AGENTS.md rules out, and it was happening: on
+            # arstechnica.com a local 403 was followed by a successful Firecrawl
+            # fetch. Every other error — a timeout, a DNS miss, a JavaScript
+            # shell — is still worth another backend.
+            if last_error.startswith(REFUSAL_PREFIX):
+                logger.info("web fetch: %s refused this page; not trying another "
+                            "backend", url)
+                break
             continue
 
         text = result["text"]

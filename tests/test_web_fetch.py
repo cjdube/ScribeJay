@@ -292,3 +292,28 @@ def test_a_missing_trafilatura_reads_as_no_text(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", _no_trafilatura)
     assert wf._extract("<html>hi</html>", "https://e.com") == ("", "")
+
+
+# ---- a refusal ends the chain -----------------------------------------------
+
+def test_a_local_refusal_does_not_fall_through_to_firecrawl(monkeypatch, with_key):
+    """AGENTS.md: never route around a block. A 403 is the site's answer, so
+    "auto" stops there rather than paying Firecrawl to get the same page.
+
+    This was live: arstechnica.com refused the local fetch and Firecrawl then
+    returned the article.
+    """
+    monkeypatch.setattr(wf, "fetch_local",
+                        lambda url, timeout: {"error": "blocked: HTTP 403"})
+    result = wf.fetch_page("https://example.com/a", backend="auto")
+    assert result["error"] == "blocked: HTTP 403"
+    # fetch_firecrawl is still the conftest guard: reaching it would raise.
+
+
+def test_an_ordinary_failure_still_falls_through_to_firecrawl(monkeypatch, with_key):
+    """The paired case, so the test above cannot pass by blocking everything.
+    A timeout is this backend failing, not the site refusing."""
+    monkeypatch.setattr(wf, "fetch_local", lambda url, timeout: {"error": "timed out"})
+    monkeypatch.setattr(wf, "fetch_firecrawl",
+                        lambda url, timeout: {"title": "T", "text": "y" * 900})
+    assert wf.fetch_page("https://example.com/b", backend="auto")["backend"] == "firecrawl"

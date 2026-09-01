@@ -17,8 +17,8 @@ is written from what they said.
     chrome history
       -> candidate_urls()      pick pages worth fetching   (activity.py, Python)
       -> fetch_pages()         get the text                (sources/web_fetch.py)
-      -> summarize_pages()     2-3 neutral lines each      (one local model call per page)
-      -> page_notes block      capped at 2,500 characters
+      -> summarize_pages()     3-5 neutral sentences each  (one local model call per page)
+      -> page_notes block      capped at 4,000 characters
       -> the ordinary draft prompt
 
 Every step degrades to the step before it. A page that will not fetch, will not
@@ -32,12 +32,24 @@ Deterministic Python, not a model call. Asking a small local model at 5:15 AM
 which pages look interesting buys nothing a sort cannot do, and adds a call that
 can time out or return nothing.
 
-**Rejected outright:** anything the learnings exclusions already reject (domain,
-title or path); non-`http(s)` URLs, via `core/urls.py:safe_url`; private and
-local hosts (`localhost`, `127.*`, `10.*`, `192.168.*`, `172.16–31.*`,
-`*.local`); session and account paths (`/login`, `/reset-password`, `/checkout`
-…), matched on path *tokens* so `/descartes` is not read as a cart; and file
-extensions that are not readable text (`.pdf`, `.zip`, `.png`, `.mp4` …).
+**An allow list, not a reject list.** A page is fetched only if its path looks
+like published writing — a headline slug of three or more real words, or a
+one-word page sitting under a section that publishes (`/blog/`, `/docs/`,
+`/news/` …) and carrying no identifier. Anything unclassifiable is skipped.
+That costs a bullet now and then; a reject list instead fails open, and the
+measured cost of that is in "the picker was the bug" below.
+
+**Rejected before the allow list even runs:** anything the learnings exclusions
+already reject (domain, title or path); non-`http(s)` URLs, via
+`core/urls.py:safe_url`; private and local hosts (`localhost`, `127.*`, `10.*`,
+`192.168.*`, `172.16–31.*`, `*.local`); session and account paths (`/login`,
+`/reset-password`, `/checkout` …), matched on path *tokens* so `/descartes` is
+not read as a cart; and file extensions that are not readable text (`.pdf`,
+`.zip`, `.png`, `.mp4` …).
+
+**The query string never leaves.** `_fetch_url` sends scheme, host and path
+only. An article renders the same without `?utm_source=`, and the query string
+is where the order ids, reservation codes and SSO `state` tokens live.
 
 **Ranked by** path depth (an article beats an index) minus visit count (a page
 opened once was read on purpose; a page opened nine times is a dashboard), then
@@ -56,6 +68,13 @@ lazily. Not installed reads as "no text", never as an ImportError up through a
 `{"error": "blocked: HTTP …"}` and that is the end of that page. There is no
 retry, no alternate user agent, and no stealth proxy — routing around a block is
 exactly the scraping-SaaS workaround AGENTS.md rules out.
+
+**A refusal also ends the backend chain.** `fetch_page` used to treat a
+`blocked:` error like any other failure and move on to Firecrawl, which is the
+same workaround wearing a different hat — observed live, where a local 403 from
+arstechnica.com was followed by a successful Firecrawl fetch of the article. A
+refusal now stops the chain. Every other error — a timeout, a DNS miss, a
+JavaScript shell that rendered nothing — still earns the next backend a try.
 
 **Firecrawl, only if you ask for it.** With `FIRECRAWL_API_KEY` set, a page
 whose local fetch came back thin (a JavaScript shell, mostly) is retried through
@@ -81,17 +100,18 @@ The raw text of a fetched page is untrusted input. AGENTS.md keeps the gather
 step compacting to plain fields for exactly this reason: the draft prompt's
 output becomes a file in your journal folder.
 
-So each page gets its own model call first, asking for 2–3 plain lines
-describing what the page is about and what it claims. Only those lines reach the
-draft. Both the fetched text **and** the finished summary are re-checked against
+So each page gets its own model call first, asking for 3–5 plain sentences
+carrying what the page actually asserts — named products, versions, numbers, the
+claim or the finding — and told to write `SKIP` rather than a sentence that
+would be true of any page on that site. Only those sentences reach the draft. Both the fetched text **and** the finished summary are re-checked against
 `learnings.excluded_keywords`, because a body is new text that the domain, title
 and path filters never saw. Either one hitting drops the page.
 
 Two prompts say so in words: the summarizer is told the page text is reference
 material to describe and never instructions to follow, and the draft prompt is
 told the same about `page_notes`. Neither is the real defence — the real defence
-is that a summary is 60 words of plain description, and a model writing that has
-no file to write and no tool to call. The wording is the belt to that
+is that a summary is at most 120 words of plain prose, and a model writing that
+has no file to write and no tool to call. The wording is the belt to that
 suspenders.
 
 There is a second, duller reason. `OLLAMA_NUM_CTX` defaults to **8192** tokens
@@ -163,6 +183,41 @@ in to is not on it.
 It also invalidated the first run's headline. Firecrawl looked like the better
 fetcher (20 pages to local's 12) largely by successfully rendering login
 screens, which were then dropped as too thin to describe.
+
+### The second finding: the notes were the bottleneck
+
+Reading the three drafts side by side, they barely differed. The cause was not
+the fetcher. It was everything downstream of it:
+
+- The summarizer was capped at **60 words** and asked what the page *was about*.
+  Sixty words of "about" is a label, and the tab title was already that label.
+- `MAX_TEXT_PER_SUMMARY` was **3,000** against a fetcher cap of **4,000**, so a
+  quarter of every fetched page was paid for and then discarded unseen.
+- `MAX_PAGE_NOTES_CHARS` was **2,500**, which truncated a full day of notes.
+
+The prompt now asks for 3–5 sentences of what the page *asserts* — named
+products, versions, numbers, the claim — and says to write `SKIP` rather than a
+sentence that would be true of any page on that site. The two caps were raised
+to 4,000.
+
+Re-measured on the same five days, local fetch only:
+
+| | before | after |
+|---|---|---|
+| mean characters per page note | ~380 | 762 |
+| mean bullet length, paths only | 201 | 201 |
+| mean bullet length, with notes | ~205 | 256 |
+
+The bullets changed in kind, not just in length. "Analyzed industry threat
+reporting on how adversarial AI adoption is reshaping enterprise security"
+became "CrowdStrike's 2026 Global Threat Report … affecting over 90
+organizations … record-setting eCrime breakout speeds". A ClickUp help page
+became the Business-Plan gate on custom default views.
+
+**Still open.** The allow list admits any three-word headline slug, so five of
+the sixteen notes that run were a Patriots signing, a late-night guest host, a
+WNBA injury report, a pasta recipe and a sitcom-cast interview. The draft prompt
+correctly ignored all five, but each cost a fetch and a model call.
 
 ### The numbers, after the fix
 

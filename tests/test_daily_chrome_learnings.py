@@ -344,3 +344,21 @@ def test_backfill_runs_oldest_first(stubbed_run, monkeypatch):
     assert dc.main() == 0
     assert days == sorted(days)
     assert len(days) == 3
+
+
+def test_the_summarizer_is_shown_the_whole_fetched_page(monkeypatch):
+    """MAX_TEXT_PER_SUMMARY used to be smaller than web_fetch.MAX_TEXT_CHARS,
+    so the fetcher's last 1,000 characters were paid for and then discarded.
+    On a page whose head is navigation, that discarded tail was the article."""
+    from scribejay.sources import web_fetch
+
+    assert dc.MAX_TEXT_PER_SUMMARY >= web_fetch.MAX_TEXT_CHARS
+
+    seen = []
+    monkeypatch.setattr(dc, "complete_text",
+                        lambda **kw: seen.append(kw["user_prompt"]) or "a note")
+    body = "A" * (web_fetch.MAX_TEXT_CHARS - 1) + "Z"
+    dc.summarize_pages([{"url": "https://e.com/a", "domain": "e.com",
+                         "path": "/a", "text": body}],
+                       _RecordingLogger(), backend=None)
+    assert seen[0].endswith("Z")
