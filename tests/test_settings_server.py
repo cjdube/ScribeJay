@@ -83,6 +83,37 @@ def test_post_from_another_origin_is_refused(session):
     assert "Origin" in reason
 
 
+def test_an_origin_of_null_is_still_refused(session):
+    """`null` is what a sandboxed frame and a file:// page send. It is not this
+    server's origin, so it stays refused — see the header test below for the
+    reason the form's own Save button was sending it."""
+    status, reason = settings_server.check_request(
+        "POST", headers(origin="null"), {}, {"csrf": session.token}, session)
+    assert status == 403
+    assert "Origin" in reason
+
+
+def test_the_page_does_not_send_a_no_referrer_policy():
+    """`Referrer-Policy: no-referrer` breaks the Origin check above.
+
+    Per Fetch, a non-CORS POST made under "no-referrer" serializes its Origin
+    header as `null` — so the settings form's own Save button 403'd with
+    "unexpected Origin: 'null'", reproduced in a real browser. "same-origin"
+    keeps the protection that mattered (the URL carries the session token, and
+    this stops it reaching any other origin) while letting the browser name
+    itself on the POST.
+
+    Asserted against the source because the header is written inside a handler
+    class that only exists per-request, and a live request would need the
+    background thread tests/conftest.py forbids.
+    """
+    from pathlib import Path
+
+    source = Path(settings_server.__file__).read_text()
+    assert '"Referrer-Policy", "same-origin"' in source
+    assert '"Referrer-Policy", "no-referrer"' not in source
+
+
 def test_post_without_the_csrf_token_is_refused(session):
     status, reason = settings_server.check_request(
         "POST", headers(origin="http://127.0.0.1:54321"), {}, {}, session)

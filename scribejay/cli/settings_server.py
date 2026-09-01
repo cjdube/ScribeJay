@@ -135,7 +135,14 @@ def make_handler(session: Session):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Frame-Options", "DENY")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
+            # "same-origin", NOT "no-referrer". The stricter value breaks the
+            # Origin check three functions down: per Fetch, a non-CORS POST
+            # made under "no-referrer" sends `Origin: null`, so the form's own
+            # Save button 403'd with "unexpected Origin: 'null'". "same-origin"
+            # keeps the same protection that mattered — the URL carries the
+            # session token, and this stops it reaching any other origin —
+            # while letting the browser name itself on the POST.
+            self.send_header("Referrer-Policy", "same-origin")
             if set_cookie:
                 self.send_header(
                     "Set-Cookie",
