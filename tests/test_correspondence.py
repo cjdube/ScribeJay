@@ -550,3 +550,36 @@ def test_an_arrived_row_carrying_a_body_still_renders_none_of_it():
     row["body"] = "SECRET BODY TEXT"
     row["snippet"] = "SECRET SNIPPET"
     assert "SECRET" not in co.render_page(co.group_day([], [row], ME), {}, DAY)
+
+
+def test_one_person_with_two_addresses_is_named_once():
+    """The bug this section was written from: a real page read
+    "Derek Plautz, Derek Plautz" because he keeps a work address and a
+    personal one."""
+    known = {"OTHER": {"subject": "x", "people": {"d@work.example": "Derek Plautz",
+                                                  "d@home.example": "Derek Plautz"},
+                       "last_outbound": "2026-08-01 09:00"}}
+    threads = co.group_day(
+        [_row("Derek Plautz <d@work.example>, Derek Plautz <d@home.example>",
+              "Plans", thread="T")], [], ME)
+    assert co.render_page(threads, known, DAY).count("Derek Plautz") == 1
+
+
+def test_a_stranger_borrowing_a_known_name_is_still_shown_separately():
+    """The merge must not become a way to hide. He knows one Derek; the second
+    address is new, so it renders with its address and cannot collapse into
+    the first."""
+    known = {"OTHER": {"subject": "x", "people": {"d@work.example": "Derek Plautz"},
+                       "last_outbound": "2026-08-01 09:00"}}
+    threads = co.group_day(
+        [_row("Derek Plautz <d@work.example>, Derek Plautz <impostor@x.example>",
+              "Plans", thread="T")], [], ME)
+    page = co.render_page(threads, known, DAY)
+    assert page.count("Derek Plautz") == 2
+    assert "impostor@x.example" in page
+
+
+def test_two_different_people_are_both_named():
+    threads = co.group_day([_row("a@x.example, b@x.example", "Plans", thread="T")], [], ME)
+    page = co.render_page(threads, {}, DAY)
+    assert "a@x.example" in page and "b@x.example" in page

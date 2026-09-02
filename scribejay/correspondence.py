@@ -248,8 +248,20 @@ def _person(addr: str, name: str, known_addresses: set) -> str:
 
 
 def _people_label(people: dict, known_addresses: set) -> str:
-    return ", ".join(_person(addr, name, known_addresses)
-                     for addr, name in people.items()) or "(nobody named)"
+    """The people on a thread, deduplicated by how they RENDER, not by address.
+
+    One human with a work address and a personal one is two entries here and
+    read as "Derek Plautz, Derek Plautz" on the page. Collapsing on the
+    rendered string is the narrowest fix that helps: two known addresses under
+    one name render identically and merge, while a stranger who has set their
+    display name to his renders as "Derek Plautz <impostor@x.example>" — a
+    different string, so it survives. Merging on the name itself would hide
+    exactly that person, which is the one this must never do.
+    """
+    seen = {}
+    for addr, name in people.items():
+        seen.setdefault(_person(addr, name, known_addresses), None)
+    return ", ".join(seen) or "(nobody named)"
 
 
 def _line(subject: str, people: str, suffix: str = "") -> str:
