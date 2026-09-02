@@ -17,6 +17,10 @@ suite-wide rather than per-test — a missed convention has to stay harmless:
   Both egress channels are stubbed suite-wide.
 - `ai_chat_learnings` has its own dedup store (STATE_PATH) and reads real
   `~/.claude` / `~/.codex` / Gemini-drop-folder paths off disk.
+- `correspondence.py` keeps a thread store under `~/.scribejay`, carrying who
+  he has ever written to and when. A test that reached it would poison the
+  continuity notes on his real pages — "first contact" is a claim about that
+  file. Redirected below.
 - `core/usage_ledger.py` appends a row to logs/usage.jsonl on every model
   call, and drops a .lock sidecar beside it. Redirected below.
 - ClickUp and Gemini are both live network egress the suite must never reach.
@@ -79,6 +83,7 @@ from scribejay.sources import clickup as _clickup  # noqa: E402
 from scribejay.sources import transcripts as _chat_transcripts  # noqa: E402
 from scribejay.sources import web_fetch as _web_fetch  # noqa: E402
 from scribejay import ai_chat_learnings as _ai_chat_learnings  # noqa: E402
+from scribejay import correspondence as _correspondence  # noqa: E402
 from scribejay.cli import schedule as _schedule  # noqa: E402
 from scribejay.cli import settings_server as _settings_server  # noqa: E402
 
@@ -153,6 +158,22 @@ def _isolate_vault_dirs(tmp_path, monkeypatch):
     # time — a second real vault path, deliberately kept out of the ingest
     # queue, and it gets the same backstop.
     monkeypatch.setenv("CORRESPONDENCE_DIR", str(tmp_path))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_correspondence_store(tmp_path, monkeypatch):
+    """Redirect the correspondence thread store off the real one.
+
+    Patched on the function rather than through the config redirect, the way
+    web_fetch's cache is: `config.resolve_path` gives a bare filename to the
+    *checkout* when the file happens to exist there, so a test that wrote one
+    into the repo root would silently bind every later run to it.
+
+    The store is what the continuity notes are computed from, so a test row
+    landing in it would make a real page say "first contact" about somebody he
+    has known for a year. tests/test_correspondence.py re-patches per test."""
+    monkeypatch.setattr(_correspondence, "store_path",
+                        lambda: tmp_path / "correspondence_threads.json")
 
 
 @pytest.fixture(autouse=True)

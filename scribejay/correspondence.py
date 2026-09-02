@@ -16,10 +16,12 @@ fields onto calendar events without a natural-language step. The subject line th
 user wrote is the most accurate description of the exchange that exists.
 """
 
+from datetime import date
 from email.utils import getaddresses
 from pathlib import Path
 
 from scribejay.core import config
+from scribejay.core.store import atomic_write_json, load_json, locked
 
 DEFAULT_CORRESPONDENCE_DIR = str(Path.home() / "Documents" / "ScribeJay" / "correspondence")
 
@@ -149,3 +151,124 @@ def render_page(threads: list, day) -> str:
         + block("Reached out", reached) + [""]
         + block("Replied", replied) + [""]
     )
+
+
+# --------------------------------------------------------------------------- #
+# The thread store — what makes a day's page say more than the day.
+#
+# One page built from one day can only list that day. "Open four days", "first
+# time he has written to her", "she answered and he never did" are all facts
+# about the gap between days, so they need something that survives the run.
+# Deterministic Python, not a model: these are dates (AGENTS.md).
+# --------------------------------------------------------------------------- #
+
+STORE_NAME = "correspondence_threads.json"
+
+# How long a finished conversation stays remembered. Long enough that "first
+# time in months" is a true sentence rather than a guess, short enough that the
+# file stays small on a mailbox that has run for years.
+RETENTION_DAYS = 90
+
+
+def store_path():
+    """Under `~/.scribejay` via resolve_path, never beside the source tree —
+    installed as a tool that would be site-packages, which a reinstall wipes.
+    A function rather than a constant so a test's redirect is seen."""
+    return config.resolve_path(STORE_NAME)
+
+
+def load_threads() -> dict:
+    """Every conversation remembered so far, keyed on Gmail's thread id.
+
+    Read without the lock on purpose. This is the only writer, the file is
+    replaced atomically so a reader sees the old or the new whole file, and a
+    momentarily stale answer costs one continuity note rather than a page.
+    """
+    return load_json(store_path(), {}).get("threads", {})
+
+
+def _stamp_date(stamp: str) -> str:
+    """The date half of a "YYYY-MM-DD HH:MM" stamp."""
+    return (stamp or "")[:10]
+
+
+def days_since(stamp: str, today: date) -> int:
+    """Whole days between a stored stamp and a date.
+
+    Returns 0 for a missing or unreadable stamp, so one damaged row costs its
+    own note rather than the page. Callers that must distinguish "today" from
+    "unknown" check the stamp themselves — `_prune` does."""
+    try:
+        seen = date.fromisoformat(_stamp_date(stamp))
+    except ValueError:
+        return 0
+    return (today - seen).days
+
+
+def _last_activity(thread: dict) -> str:
+    """The later of the two stamps, or "" for a row that carries neither."""
+    return max(thread.get("last_inbound") or "", thread.get("last_outbound") or "")
+
+
+def owes_reply(thread: dict) -> bool:
+    """True when the last thing to happen on the thread was somebody writing
+    to HIM. A thread he answered last is their turn, not his.
+
+    Compared as whole stamps rather than dates: a message that arrived at 5pm
+    after he answered at 9am is still his turn, and a date-only comparison
+    would call that day even."""
+    inbound = thread.get("last_inbound") or ""
+    return bool(inbound) and inbound > (thread.get("last_outbound") or "")
+
+
+def _prune(known: dict, today: date) -> dict:
+    """Drop conversations with no activity inside RETENTION_DAYS.
+
+    Pruned on write so a store the daily job appends to cannot grow unbounded
+    (AGENTS.md). A row carrying no stamp at all is dropped too: it can only be
+    damage, and `days_since` would read it as 0 and keep it forever."""
+    kept = {}
+    for key, row in known.items():
+        stamp = _last_activity(row)
+        if stamp and days_since(stamp, today) <= RETENTION_DAYS:
+            kept[key] = row
+    return kept
+
+
+def remember_threads(day_threads: list, today: date) -> None:
+    """Fold one day's conversations into the store, prune, and write.
+
+    Each entry is {thread_id, subject, people, last_inbound, last_outbound},
+    where either stamp may be "" — a day on which only one side wrote.
+
+    Held under the lock across the whole read-modify-write. A backfill runs
+    this once per day in a loop, and a launchd run can overlap a hand-run one;
+    without the lock the second would write a store built from a state the
+    first had already moved past."""
+    with locked(store_path()):
+        data = load_json(store_path(), {})
+        known = data.get("threads", {})
+        for entry in day_threads:
+            key = entry.get("thread_id")
+            if not key:
+                continue
+            row = known.setdefault(key, {"first_seen": "", "people": {}})
+            row["subject"] = entry.get("subject") or row.get("subject", "")
+            row.setdefault("people", {})
+            _merge_people(row["people"], entry.get("people") or {})
+            stamps = [s for s in (entry.get("last_inbound"),
+                                  entry.get("last_outbound")) if s]
+            # Each side moves forward only. A backfill walks oldest day first,
+            # but a hand-run --date can land out of order, and a store that
+            # went backwards would report a thread as unanswered after he
+            # had already answered it.
+            for side in ("last_inbound", "last_outbound"):
+                stamp = entry.get(side) or ""
+                if stamp > (row.get(side) or ""):
+                    row[side] = stamp
+            if stamps:
+                earliest = min(stamps)
+                if not row["first_seen"] or earliest < row["first_seen"]:
+                    row["first_seen"] = earliest
+        data["threads"] = _prune(known, today)
+        atomic_write_json(store_path(), data)

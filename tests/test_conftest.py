@@ -156,6 +156,15 @@ def test_chat_transcript_sources_are_redirected_away_from_real_history():
     assert transcripts.CODEX_SESSIONS_DIR != transcripts.codex_sessions_dir()
 
 
+def test_the_correspondence_thread_store_is_redirected_away_from_home():
+    """The store the continuity notes are read out of. A test row landing in
+    the real one would make a real page say "first contact" about somebody he
+    has known for a year."""
+    real = Path.home() / ".scribejay"
+    assert correspondence.store_path().resolve().parent != real, \
+        "a test writing this store would poison the real pages' continuity notes"
+
+
 def test_the_ai_chat_learnings_store_is_redirected_away_from_config():
     real_config = Path(_logs.__file__).resolve().parent.parent.parent / "config"
     assert Path(ai_chat_learnings.STATE_PATH).resolve().parent != real_config, \

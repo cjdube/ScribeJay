@@ -8,6 +8,9 @@ something that mailbox actually did: a daily digest email to himself, a
 customer.io unsubscribe, and one person arriving both named and bare on the
 same thread."""
 
+import json
+from datetime import date, timedelta
+
 import pytest
 
 from scribejay import correspondence as co
@@ -217,3 +220,168 @@ def test_correspondence_dir_resolves_a_relative_setting_under_the_config_dir(mon
     monkeypatch.setenv("CORRESPONDENCE_DIR", "letters-under-config")
 
     assert co._correspondence_dir() == tmp_path / "letters-under-config"
+
+
+# --------------------------------------------------------------------------- #
+# The thread store. Every fact a page states about the gap between days —
+# "open 4 days", "first contact", "she wrote and he never answered" — is read
+# out of this file, so a wrong row is a wrong sentence about a real person.
+#
+# store_path() is redirected to tmp_path suite-wide by tests/conftest.py.
+# --------------------------------------------------------------------------- #
+
+TODAY = date(2026, 9, 2)
+
+
+def _entry(thread="T1", subject="Proposal", people=None,
+           inbound="", outbound=""):
+    return {"thread_id": thread, "subject": subject,
+            "people": people if people is not None else {"kat@x.example": "Kat"},
+            "last_inbound": inbound, "last_outbound": outbound}
+
+
+def test_an_unwritten_store_reads_as_empty():
+    # First run on a fresh machine. Not an error, and not a crash.
+    assert co.load_threads() == {}
+
+
+def test_a_days_threads_come_back_on_the_next_read():
+    co.remember_threads([_entry(outbound="2026-09-01 09:00")], TODAY)
+    known = co.load_threads()
+    assert list(known) == ["T1"]
+    assert known["T1"]["last_outbound"] == "2026-09-01 09:00"
+    assert known["T1"]["people"] == {"kat@x.example": "Kat"}
+
+
+def test_first_seen_is_the_earliest_stamp_on_the_thread():
+    co.remember_threads([_entry(inbound="2026-08-20 17:00",
+                                outbound="2026-08-20 09:00")], TODAY)
+    assert co.load_threads()["T1"]["first_seen"] == "2026-08-20 09:00"
+
+
+def test_first_seen_does_not_move_forward_on_a_later_day():
+    """The whole point of the field. If a second day overwrote it, every
+    thread would read as one day old and "open 4 days" would never be true."""
+    co.remember_threads([_entry(outbound="2026-08-20 09:00")], TODAY)
+    co.remember_threads([_entry(outbound="2026-09-01 09:00")], TODAY)
+    assert co.load_threads()["T1"]["first_seen"] == "2026-08-20 09:00"
+
+
+def test_an_out_of_order_run_does_not_rewind_a_thread():
+    """A backfill walks oldest-first, but --date can land any day at any time.
+    A store that went backwards would report a thread as unanswered after he
+    had already answered it."""
+    co.remember_threads([_entry(outbound="2026-09-01 09:00")], TODAY)
+    co.remember_threads([_entry(outbound="2026-08-20 09:00")], TODAY)
+    assert co.load_threads()["T1"]["last_outbound"] == "2026-09-01 09:00"
+
+
+def test_a_later_day_adds_the_other_side_without_losing_the_first():
+    co.remember_threads([_entry(outbound="2026-08-31 09:00")], TODAY)
+    co.remember_threads([_entry(inbound="2026-09-01 11:00")], TODAY)
+    row = co.load_threads()["T1"]
+    assert row["last_outbound"] == "2026-08-31 09:00"
+    assert row["last_inbound"] == "2026-09-01 11:00"
+
+
+def test_a_real_name_replaces_a_bare_address_across_days():
+    co.remember_threads([_entry(people={"kat@x.example": "kat@x.example"},
+                                outbound="2026-08-31 09:00")], TODAY)
+    co.remember_threads([_entry(people={"kat@x.example": "Kat Cleveland"},
+                                inbound="2026-09-01 11:00")], TODAY)
+    assert co.load_threads()["T1"]["people"] == {"kat@x.example": "Kat Cleveland"}
+
+
+def test_a_later_day_with_no_subject_keeps_the_one_we_had():
+    co.remember_threads([_entry(subject="Proposal", outbound="2026-08-31 09:00")], TODAY)
+    co.remember_threads([_entry(subject="", inbound="2026-09-01 11:00")], TODAY)
+    assert co.load_threads()["T1"]["subject"] == "Proposal"
+
+
+def test_an_entry_with_no_thread_id_is_skipped_not_stored_under_blank():
+    co.remember_threads([_entry(thread="", outbound="2026-09-01 09:00")], TODAY)
+    assert co.load_threads() == {}
+
+
+# ---- owes_reply: whose turn is it -------------------------------------------
+
+def test_owes_reply_is_true_when_they_wrote_last():
+    assert co.owes_reply({"last_inbound": "2026-09-01 11:00",
+                          "last_outbound": "2026-08-31 09:00"}) is True
+
+
+def test_owes_reply_is_false_when_he_wrote_last():
+    assert co.owes_reply({"last_inbound": "2026-08-31 09:00",
+                          "last_outbound": "2026-09-01 11:00"}) is False
+
+
+def test_owes_reply_compares_the_clock_not_just_the_day():
+    """A message that arrived at 5pm after he answered at 9am is still his
+    turn. A date-only comparison would call that day even and lose the thread
+    from the page — which is the exact case this section exists to catch."""
+    assert co.owes_reply({"last_inbound": "2026-09-01 17:00",
+                          "last_outbound": "2026-09-01 09:00"}) is True
+
+
+def test_owes_reply_is_false_when_nothing_ever_arrived():
+    # A thread he started and nobody answered is not his turn.
+    assert co.owes_reply({"last_inbound": "", "last_outbound": "2026-09-01 09:00"}) is False
+    assert co.owes_reply({}) is False
+
+
+# ---- days_since --------------------------------------------------------------
+
+def test_days_since_counts_whole_days_from_the_stamps_date():
+    assert co.days_since("2026-08-30 23:59", TODAY) == 3
+    assert co.days_since("2026-09-02 00:01", TODAY) == 0
+
+
+def test_days_since_reads_a_damaged_stamp_as_zero():
+    # One damaged row costs its own note, not the page.
+    assert co.days_since("", TODAY) == 0
+    assert co.days_since("not a date", TODAY) == 0
+
+
+# ---- pruning -----------------------------------------------------------------
+
+def test_a_conversation_past_the_retention_window_is_dropped():
+    old = (TODAY - timedelta(days=co.RETENTION_DAYS + 1)).isoformat()
+    co.remember_threads([_entry(outbound=f"{old} 09:00")], TODAY)
+    assert co.load_threads() == {}
+
+
+def test_a_conversation_exactly_at_the_window_is_kept():
+    edge = (TODAY - timedelta(days=co.RETENTION_DAYS)).isoformat()
+    co.remember_threads([_entry(outbound=f"{edge} 09:00")], TODAY)
+    assert list(co.load_threads()) == ["T1"]
+
+
+def test_pruning_happens_on_write_so_the_store_cannot_grow_unbounded():
+    """AGENTS.md: a store the daily job appends to prunes on write. Asserted
+    on the file, not on a later read, because a filter applied at read time
+    would leave the file growing forever."""
+    old = (TODAY - timedelta(days=200)).isoformat()
+    co.remember_threads([_entry(thread="OLD", outbound=f"{old} 09:00")],
+                        TODAY - timedelta(days=200))
+    co.remember_threads([_entry(thread="NEW", outbound="2026-09-01 09:00")], TODAY)
+    written = json.loads(co.store_path().read_text())
+    assert list(written["threads"]) == ["NEW"]
+
+
+def test_a_row_carrying_no_stamp_at_all_is_dropped():
+    """It can only be damage, and days_since reads a blank as 0 — so without
+    an explicit rule it would be kept forever."""
+    co.store_path().write_text(json.dumps({"threads": {"T1": {"subject": "x"}}}))
+    co.remember_threads([], TODAY)
+    assert co.load_threads() == {}
+
+
+def test_running_the_same_day_twice_changes_nothing():
+    """The plan's own check for this store, kept as a test. A re-run after a
+    failure, and a --backfill that overlaps days already recorded, are both
+    ordinary — neither may double a count or move a date."""
+    entries = [_entry(inbound="2026-09-01 11:00", outbound="2026-09-01 09:00")]
+    co.remember_threads(entries, TODAY)
+    once = co.store_path().read_text()
+    co.remember_threads(entries, TODAY)
+    assert co.store_path().read_text() == once
