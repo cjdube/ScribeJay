@@ -46,6 +46,17 @@ DEFAULT_CORRESPONDENCE_DIR = str(Path.home() / "Documents" / "ScribeJay" / "corr
 # to grow — a missed one costs a junk line in a page, not a failure.
 NOISE_SUBJECTS = ("unsubscribe",)
 
+# Google Calendar writes these subject lines itself, and Gmail files them in the
+# primary tab rather than in a category — so the server-side filter in
+# sources/gmail.py never sees them. A cancellation is a real thing that happened
+# to the day, but it is not a person waiting on an answer: left in, it sits in
+# "Gone quiet" forever, because there is nobody to reply to. Matched as a prefix
+# on the RAW subject, so "Re: Invitation: ..." — a human writing back — is kept.
+CALENDAR_SUBJECT_PREFIXES = (
+    "invitation:", "updated invitation:", "canceled:", "cancelled:",
+    "accepted:", "declined:", "tentatively accepted:",
+)
+
 
 def _correspondence_dir() -> Path:
     """Where the pages go. **Not** LEARNINGS_DIR.
@@ -144,9 +155,13 @@ def filter_inbound_noise(rows: list, me: str, logger=None) -> list:
     carries Gmail's SENT label and the query already excluded it.
 
     So what is left is the same subject list the sent side uses, applied for
-    symmetry: an unsubscribe confirmation really does arrive."""
-    kept = [row for row in rows
-            if (row.get("subject") or "").strip().lower() not in NOISE_SUBJECTS]
+    symmetry, plus the calendar prefixes Gmail leaves in the primary tab."""
+    def keep(row) -> bool:
+        subject = (row.get("subject") or "").strip().lower()
+        return (subject not in NOISE_SUBJECTS
+                and not subject.startswith(CALENDAR_SUBJECT_PREFIXES))
+
+    kept = [row for row in rows if keep(row)]
     if logger and len(kept) < len(rows):
         logger.info(f"filtered {len(rows) - len(kept)} of {len(rows)} arrived "
                     "message(s) as machine mail")
@@ -197,6 +212,8 @@ def group_day(sent_rows: list, inbox_rows: list, me: str) -> list:
                 "reached_out": False,
                 "last_inbound": "",
                 "last_outbound": "",
+                # Addresses HE typed. See render_page.
+                "addressed": set(),
             }
         thread["messages"] += 1
         return thread
@@ -206,6 +223,11 @@ def group_day(sent_rows: list, inbox_rows: list, me: str) -> list:
         thread = touch(row)
         _merge_people(thread["people"], _people(row, me))
         thread["last_outbound"] = max(thread["last_outbound"], row.get("date", ""))
+        if not row.get("is_reply"):
+            # A thread he opened: every address on it is one he typed. A
+            # stranger cannot put themselves in his own To: line, so these
+            # names need no address printed beside them — see render_page.
+            thread["addressed"].update(_people(row, me))
         if thread["thread_id"] not in started:
             started.add(thread["thread_id"])
             thread["reached_out"] = not row.get("is_reply")
@@ -316,8 +338,15 @@ def render_page(threads: list, known: dict, day) -> str:
     is what makes "first contact" and an age in days true statements rather
     than guesses. Fold today in afterwards, with `remember_threads`.
     """
+    # Who may be named without their address beside them: anyone already in the
+    # store, plus anyone he addressed himself today. The second half exists for
+    # day one — one person with a work address and a personal one is new on both,
+    # so both would print an address and the two would not merge. His own To:
+    # line is his data, not a stranger's claim about themselves.
     known_addresses = {addr for row in known.values()
                        for addr in (row.get("people") or {})}
+    known_addresses |= {addr for thread in threads
+                        for addr in thread.get("addressed") or ()}
     active = {t["thread_id"] for t in threads}
 
     def today_line(thread: dict) -> str:

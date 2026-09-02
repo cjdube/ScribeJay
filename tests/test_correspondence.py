@@ -566,17 +566,84 @@ def test_one_person_with_two_addresses_is_named_once():
 
 
 def test_a_stranger_borrowing_a_known_name_is_still_shown_separately():
-    """The merge must not become a way to hide. He knows one Derek; the second
-    address is new, so it renders with its address and cannot collapse into
-    the first."""
+    """The merge must not become a way to hide. He knows one Derek; the message
+    ARRIVED from a second address claiming the same name, so it renders with
+    that address and cannot collapse into the first.
+
+    Inbound is where this case lives. A stranger cannot put themselves in his
+    own To: line, which is why the sent side is allowed to merge — see the
+    test below."""
     known = {"OTHER": {"subject": "x", "people": {"d@work.example": "Derek Plautz"},
                        "last_outbound": "2026-08-01 09:00"}}
     threads = co.group_day(
-        [_row("Derek Plautz <d@work.example>, Derek Plautz <impostor@x.example>",
-              "Plans", thread="T")], [], ME)
+        [], [_in(sender="Derek Plautz <impostor@x.example>",
+                 to=f"{ME}, Derek Plautz <d@work.example>", thread="T")], ME)
     page = co.render_page(threads, known, DAY)
     assert page.count("Derek Plautz") == 2
     assert "impostor@x.example" in page
+
+
+def test_two_addresses_he_typed_himself_merge_on_the_first_day():
+    """The real page that started this: he opened a thread to Derek's work and
+    personal addresses, both new, and both printed an address so neither could
+    merge. Addresses on mail HE sent are ones he typed."""
+    threads = co.group_day(
+        [_row("Derek Plautz <d@work.example>, Derek Plautz <d@home.example>",
+              "checking in", thread="T")], [], ME)
+    page = co.render_page(threads, {}, DAY)
+    assert page.count("Derek Plautz") == 1
+    assert "d@work.example" not in page
+
+
+def test_answering_a_stranger_does_not_vouch_for_them():
+    """Only a thread he STARTED counts as typing the address. A reply's To:
+    line is whatever the sender put in their From:, so it proves nothing."""
+    threads = co.group_day(
+        [_row("Craig Dube <impostor@x.example>", "Re: Hello", is_reply=True, thread="T")],
+        [], ME)
+    assert "impostor@x.example" in co.render_page(threads, {}, DAY)
+
+
+# ---- calendar machinery ------------------------------------------------------
+
+@pytest.mark.parametrize("subject", [
+    "Canceled: Craig Dube - 30 minutes meeting",
+    "Invitation: Standup @ Mon Sep 7",
+    "Updated invitation: Standup @ Mon Sep 7",
+    "Accepted: Standup",
+    "Declined: Standup",
+])
+def test_calendar_machinery_never_reaches_the_page(subject):
+    """A cancellation is a thing that happened to the day, but nobody is waiting
+    on an answer — left in, it sits in Gone quiet forever. Gmail files these in
+    the primary tab, so its category filter never sees them."""
+    assert co.filter_inbound_noise([_in(subject=subject)], ME) == []
+
+
+def test_a_person_replying_to_an_invitation_is_kept():
+    # "Re: Invitation: ..." is a human writing, not Google Calendar.
+    row = _in(subject="Re: Invitation: Standup @ Mon Sep 7")
+    assert co.filter_inbound_noise([row], ME) == [row]
+
+
+def test_a_subject_that_merely_starts_with_a_similar_word_is_kept():
+    row = _in(subject="Invitations are open for the meetup")
+    assert co.filter_inbound_noise([row], ME) == [row]
+
+
+def test_the_sent_side_does_not_filter_calendar_subjects():
+    """He can write "Canceled: ..." to a person. The prefixes are Google's own
+    generated subjects arriving, not words he is banned from using."""
+    row = _row("kat@vendor.example", "Canceled: our call")
+    assert co.filter_noise([row], ME) == [row]
+
+
+def test_dropping_calendar_mail_is_logged(caplog):
+    import logging
+    with caplog.at_level(logging.INFO):
+        co.filter_inbound_noise([_in(subject="Canceled: Standup")], ME,
+                                logger=logging.getLogger("t"))
+    assert "filtered 1 of 1" in caplog.text
 
 
 def test_two_different_people_are_both_named():

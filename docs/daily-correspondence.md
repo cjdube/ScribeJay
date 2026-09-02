@@ -104,7 +104,21 @@ A rejected third rule: *"the recipient is not a real address."* Real data
 disproved it — the unsubscribe went to
 `32.MRTVIML…@unsubscribe2.customer.io`, which is a perfectly valid address.
 
-**Inbound.** Filtered by Gmail, server-side, using its own category tabs:
+**Inbound.** Two rules, and the first is Gmail's.
+
+| Rule | Catches |
+|---|---|
+| Gmail's category tabs, in the query | newsletters, notifications, social, forums |
+| Subject starts with a `CALENDAR_SUBJECT_PREFIXES` entry | `Canceled:`, `Invitation:`, `Accepted:` and friends |
+
+Google Calendar writes its own subject lines and Gmail files them in the
+**primary** tab, so the category filter never sees them. A cancellation is a
+real thing that happened to the day, but nobody is waiting on an answer — left
+in, it sits in "Gone quiet" forever. Matched as a prefix on the *raw* subject,
+so `Re: Invitation: …` — a human writing back — is kept. The sent side does not
+apply this list: he is allowed to write "Canceled: our call" to a person.
+
+The category filter itself:
 `-category:promotions -category:social -category:updates -category:forums`. A
 hand-kept list of newsletter senders would need a new entry every time he
 subscribes to something and would never be finished — the same reject-list trap
@@ -153,6 +167,13 @@ him twice. A real name beats a bare address whichever order the two arrive in.
 `Derek Plautz, Derek Plautz`. The merge is on the *rendered* string, so two
 known addresses under one name collapse while a stranger borrowing that name
 renders with their address and survives as a separate entry.
+
+**His own To: line counts as knowing someone.** On day one both of Derek's
+addresses were new, so both printed an address and the two could not merge.
+Addresses on a thread **he started** are ones he typed, and a stranger cannot
+put themselves in his own To: line — so they are named plainly. A *reply* does
+not count: its To: line is whatever the sender put in their From:, and proves
+nothing.
 
 ## The thread store
 
