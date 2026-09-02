@@ -4,7 +4,7 @@ The record says what he built (scribejay/daily_commits.py), what he read
 (daily_chrome_learnings) and where his hours went (AI Session Time Blocks). None of it
 says who he talked to. This is the only source that does.
 
-**Metadata only.** `scribejay.sources.gmail_sent.fetch_sent_metadata` asks Gmail for
+**Metadata only.** `scribejay.sources.gmail.fetch_sent_metadata` asks Gmail for
 headers and nothing else, so the bodies are never fetched rather than fetched and
 discarded. What is recorded is who, when, about what subject line, and whether it
 was an answer or a decision to reach out.

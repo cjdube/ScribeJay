@@ -84,7 +84,7 @@ it survives the broken interpreter it exists to repair.
   (`cli/init.py`) and the health check (`cli/doctor.py`). See
   [cli.md](cli.md).
 - `scribejay/sources/` — read-only fetchers: `calendar`, `chrome`, `clickup`,
-  `git`, `gmail_sent`, `strava`, `transcripts`, `youtube`.
+  `git`, `gmail`, `strava`, `transcripts`, `youtube`.
 - `scribejay/sinks/` — write-only: `calendar` (log an event, recolor one),
   `email` (the vault-write fallback and the colorizer's failure notice),
   `vault` (write a day's entry to the Obsidian vault, or fall back to email

@@ -68,7 +68,7 @@ and tasks need the same answer, so none of them roll their own.
 - Falls back to `"UTC"` if the path can't be resolved.
 
 Callers include `scribejay/sources/chrome.py`, `scribejay/sources/youtube.py`,
-`scribejay/sources/gmail_sent.py`, `scribejay/sources/strava.py`,
+`scribejay/sources/gmail.py`, `scribejay/sources/strava.py`,
 `scribejay/calendar_colorizer.py` and `scribejay/claude_time_blocks.py`.
 
 Gmail is a variation on the same rule rather than an exception to it:

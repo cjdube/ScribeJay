@@ -2,7 +2,7 @@
 
 Non-interactive — run by launchd every morning, covering the prior day. Reads
 Gmail's SENT metadata (headers only, never bodies) via
-`scribejay.sources.gmail_sent.fetch_sent_metadata`, drops mail sent to the user
+`scribejay.sources.gmail.fetch_sent_metadata`, drops mail sent to the user
 himself, groups the rest by conversation, and writes the page in Python.
 
 **No model call.** With no bodies there is nothing to summarize that the subject
@@ -38,7 +38,7 @@ from scribejay.correspondence import (
     render_page,
 )
 from scribejay.sinks.vault import persist_or_email
-from scribejay.sources.gmail_sent import fetch_sent_metadata, my_address
+from scribejay.sources.gmail import fetch_sent_metadata, my_address
 
 
 def _run_for_day(start, end, day, me, logger) -> None:

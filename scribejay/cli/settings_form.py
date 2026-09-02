@@ -502,7 +502,7 @@ def test_feature(name: str) -> str:
         return _rows(get_events_in_range(start.isoformat(), end.isoformat()), "events")
 
     if name == "gmail":
-        from scribejay.sources.gmail_sent import fetch_sent_metadata
+        from scribejay.sources.gmail import fetch_sent_metadata
         return _rows(fetch_sent_metadata(start, end), "messages")
 
     if name == "youtube":

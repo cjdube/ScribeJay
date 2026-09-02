@@ -14,7 +14,7 @@ new OAuth.
 
 ## What it reads
 
-`scribejay.sources.gmail_sent.fetch_sent_metadata` — a read-only fetcher, the
+`scribejay.sources.gmail.fetch_sent_metadata` — a read-only fetcher, the
 same shape `scribejay/sources/calendar.py` has for the calendar colorizer. It
 reads the SENT label and nothing else; the inbox is never touched.
 

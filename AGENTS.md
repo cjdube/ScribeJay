@@ -39,7 +39,7 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   JSON line per model call into `logs/usage.jsonl`, written here and read only
   from outside this repo ([docs/usage-ledger.md](docs/usage-ledger.md)).
 - `scribejay/sources/` — read-only fetchers: `calendar`, `chrome`, `clickup`,
-  `git`, `gmail_sent`, `strava`, `transcripts`, `youtube`.
+  `git`, `gmail`, `strava`, `transcripts`, `youtube`.
 - `scribejay/sinks/` — write-only: `calendar` (log an event, recolor one),
   `email` (the vault-write fallback and the colorizer's failure notice),
   `vault` (write a day's entry to the journal folder, or fall back to email
