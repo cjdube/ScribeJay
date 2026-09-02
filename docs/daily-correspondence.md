@@ -118,6 +118,10 @@ in, it sits in "Gone quiet" forever. Matched as a prefix on the *raw* subject,
 so `Re: Invitation: …` — a human writing back — is kept. The sent side does not
 apply this list: he is allowed to write "Canceled: our call" to a person.
 
+The same prefixes are checked again in `quiet_threads`, against the stored
+subject. Adding a filter does not retroactively remove what it would have
+caught, and "Gone quiet" is the only section a thread can sit in for 90 days.
+
 The category filter itself:
 `-category:promotions -category:social -category:updates -category:forums`. A
 hand-kept list of newsletter senders would need a new entry every time he
@@ -231,9 +235,17 @@ until the identity resolves.
 14 days, oldest first. A backfill is **one run** in the dashboard's history, not
 N ([logs.md](logs.md)), and one day whose fetch fails does not stop the rest.
 
-Re-running a day overwrites that day's file, so a backfill is safe to repeat.
-The store is safe to repeat too: stamps only move in one direction, so a
-re-run lands the same values.
+**A backfill is not a safe way to rebuild old pages.** Re-running a day
+overwrites that day's file with what Gmail can see *today*, and `in:sent`
+excludes trash. Measured on this mailbox: the page written on 31 Aug named Max
+Ciccotosto, and a backfill run on 2 Sep found nothing at all for that day,
+because the message had since been deleted. The page written on the day is the
+accurate record; a backfill over it silently deletes real history. Backfill
+into a **new or empty** `CORRESPONDENCE_DIR`, or onto days that have no page
+yet.
+
+The store is safe to repeat: stamps only move in one direction, `first_seen`
+only moves backwards, so a re-run lands the same values or better ones.
 
 ## Related
 

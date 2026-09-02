@@ -318,10 +318,20 @@ def quiet_threads(known: dict, active: set, day) -> list:
 
     Public because the task asks it whether a day with no mail is still worth a
     page: a quiet Sunday with a week-old unanswered message has something to
-    say, and skipping it would hide exactly the thread this section is for."""
+    say, and skipping it would hide exactly the thread this section is for.
+
+    The noise filter runs again here, on the stored subject. A row saved before
+    a filter existed is not retroactively removed by adding one, and this
+    section is the only place a thread can nag forever — a calendar
+    cancellation already in the store would sit here for the full 90 days.
+    Guard on the way out, not only on the way in.
+    """
     aged = []
     for key, row in known.items():
         if key in active or not owes_reply(row):
+            continue
+        if (row.get("subject") or "").strip().lower().startswith(
+                CALENDAR_SUBJECT_PREFIXES):
             continue
         age = days_since(row.get("last_inbound", ""), day)
         if age >= QUIET_AFTER_DAYS:

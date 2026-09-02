@@ -650,3 +650,14 @@ def test_two_different_people_are_both_named():
     threads = co.group_day([_row("a@x.example, b@x.example", "Plans", thread="T")], [], ME)
     page = co.render_page(threads, {}, DAY)
     assert "a@x.example" in page and "b@x.example" in page
+
+
+def test_calendar_machinery_already_in_the_store_stops_nagging():
+    """Adding a filter does not retroactively remove what it would have caught.
+    Gone quiet is the only section a thread can sit in forever, so the filter
+    runs again on the way out."""
+    known = {"OLD": {"subject": "Canceled: Craig Dube - 30 minutes meeting",
+                     "people": {"g@x.example": "Gavin Lawton"},
+                     "last_inbound": "2026-08-01 09:00", "last_outbound": ""}}
+    section = co.render_page([], known, DAY).split("### Gone quiet")[1]
+    assert "**None:**" in section
