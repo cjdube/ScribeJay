@@ -48,7 +48,8 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   job (see [docs/architecture.md](docs/architecture.md) for the schedule
   table), plus the helpers beside them: `activity.py` (exclusion-filter and
   compaction, shared by the daily learnings reviews), `correspondence.py`
-  (the sent-mail noise filter and page builder), `journal.py` (deterministic
+  (the mail noise filters, the thread store and the page builder —
+  [docs/daily-correspondence.md](docs/daily-correspondence.md)), `journal.py` (deterministic
   Markdown sections), `migrate.py` (the one reader of a legacy `config/.env`
   or `preferences.json`) and `status.py`.
 - `scribejay/assets/` — the mark, in SVG and three PNG sizes. The SVG is
@@ -135,6 +136,20 @@ gather step compacting to plain fields (title, url, count) rather than
 passing raw page bodies, and never let a source's content control which
 file gets written or where.
 
+**A model is not the only thing that renders untrusted text.** A subject line
+or a sender's display name goes straight from Gmail into a Markdown page the
+user trusts, with no model anywhere in the path — and a subject of
+`[Unpaid invoice](http://evil.example)` renders as a live link inside the
+vault. Anything a stranger chose goes through
+`from scribejay.core.text import safe_label` before it reaches a file. It
+neutralizes Markdown/HTML syntax rather than escaping it, because a diary that
+reads as `\[Unpaid invoice\]` every morning is worse than one that loses a
+stranger's punctuation.
+
+**A store is the same surface a day later.** Untrusted text written to a JSON
+store today is rendered tomorrow; nothing becomes trusted by having been saved
+once. Guard on the way out, not on the way in.
+
 ## Small-local-model constraints
 
 The default backend is a small on-device model; design around it:
@@ -146,7 +161,9 @@ The default backend is a small on-device model; design around it:
   bound the prompt, request a line-oriented output format, and parse
   defensively.
 - **Scheme-validate any URL** before rendering it into Markdown or HTML —
-  `from scribejay.core.urls import safe_url`, don't copy it.
+  `from scribejay.core.urls import safe_url`, don't copy it. Its sibling
+  `core/text.py:safe_label` does the same job for the words around the link;
+  see the untrusted-content section above.
 - **Pass `think=False` for any call that fills in a template** — a
   classification, a score, a fixed output format — and pass `logger=` with
   it. Thinking tokens share the `num_predict` budget, so over-reasoning

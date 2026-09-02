@@ -50,7 +50,7 @@ See [docs/cli.md](docs/cli.md) for every command.
 | `daily_commits` | 4:55 AM | Yesterday's git commits across your projects, to a page | nothing |
 | `daily_youtube_learnings` | 5:05 AM | Yesterday's YouTube Likes, summarized to a page | Google |
 | `daily_chrome_learnings` | 5:15 AM | Yesterday's Chrome browsing, summarized to a page | nothing |
-| `daily_correspondence` | 5:20 AM | Yesterday's sent email, logged to a page | Google |
+| `daily_correspondence` | 5:20 AM | Yesterday's mail both ways, and who is still waiting on a reply | Google |
 | `strava_download` | 5:50 AM | Yesterday's Strava activities, as calendar events | Google + Strava |
 | `calendar_colorizer` | 5:00 PM | Yesterday's uncategorized events, colour-coded by type | Google |
 
@@ -62,7 +62,7 @@ and file structure.
 The middle step varies, and the ends are what define the shape. Four jobs make
 one call. `ai_chat_learnings` makes one per chat and `claude_time_blocks` one
 per block, each small and bounded. `strava_download` and `daily_correspondence`
-make **none at all** — an activity's fields and a sent-mail header need no
+make **none at all** — an activity's fields and a mail header need no
 sentence written about them, and asking for one would only invent detail the
 source does not carry.
 
@@ -204,7 +204,7 @@ One page per job, for when a page reads wrong and you want to know why:
   yesterday's pages so the Chrome review says what they said, not what their
   URL implied
 - [docs/daily-correspondence.md](docs/daily-correspondence.md) — who yesterday
-  was spent writing to
+  was spent talking to, and which threads are still waiting on him
 
 ## Security model
 

@@ -1,45 +1,95 @@
-# Daily correspondence — who got written to
+# Daily correspondence — who he talked to, and who is still waiting
 
 `scribejay/daily_correspondence.py`, daily at 5:20 AM. Reads yesterday's Gmail
-SENT **metadata** — headers, never bodies — groups it by conversation and writes
-`Correspondence-<date>.md` into `CORRESPONDENCE_DIR`.
+**metadata** in both directions — headers, never bodies — groups it by
+conversation and writes `Correspondence-<date>.md` into `CORRESPONDENCE_DIR`.
 
 **Why it exists.** The record already covers what was built
 ([daily-commits.md](daily-commits.md)), what was read
 ([daily-learnings.md](daily-learnings.md)) and where the hours went
 ([AI Session Time Blocks](ai-session-time-blocks.md)). None of it says who the
-day was spent talking to. Sent mail is the
-only source that does, and `gmail.readonly` is already consented, so it costs no
-new OAuth.
+day was spent talking to. Mail is the only source that does, and
+`gmail.readonly` is already consented, so it costs no new OAuth.
+
+**Why it reads the inbox too.** Sent mail alone answers "who did I write to",
+which he already knows — he wrote them. The question worth a page is who wrote
+to *him* and never got an answer. That is the half a sent-only record cannot
+see, and the reason the page has four sections instead of two.
 
 ## What it reads
 
-`scribejay.sources.gmail.fetch_sent_metadata` — a read-only fetcher, the
-same shape `scribejay/sources/calendar.py` has for the calendar colorizer. It
-reads the SENT label and nothing else; the inbox is never touched.
+Two fetchers in `scribejay/sources/gmail.py`, sharing one client and one
+list-then-get loop:
 
-Each row is `{message_id, thread_id, to, cc, subject, date, is_reply}` and
-nothing else. Gmail is asked with `format="metadata"`, so a body is never
-*fetched* — not fetched and then discarded. The test asserts that on the request
-arguments, because a row with no body would look identical either way.
+| Fetcher | Query | Row |
+|---|---|---|
+| `fetch_sent_metadata` | `in:sent` | `{message_id, thread_id, to, cc, subject, date, is_reply}` |
+| `fetch_inbox_metadata` | `INBOX_SCOPE` + `INBOX_CATEGORY_FILTER` | the above plus `from`, `header_id`, `references`, minus `is_reply` |
 
-**The day window is sent as epoch seconds.** Gmail's `after:`/`before:` take whole
-days in the *account's* timezone, which is not necessarily the machine's, and
-would quietly slice the day wrong ([timezones.md](timezones.md)).
+Gmail is asked with `format="metadata"` and an explicit `metadataHeaders` list,
+so a body is never *fetched* — not fetched and then discarded. The test asserts
+that on the request arguments, because a row with no body would look identical
+either way.
+
+**"Mail that arrived", not "mail still in the inbox".** `INBOX_SCOPE` is
+`-in:sent -in:draft -in:spam -in:trash -in:chats` rather than `in:inbox`. The
+job runs at 5:20 the next morning, by which time anything already dealt with
+has often been archived — and an archived message he never answered is exactly
+the one worth recording.
+
+**The day window is sent as epoch seconds.** Gmail's `after:`/`before:` take
+whole days in the *account's* timezone, which is not necessarily the machine's,
+and would quietly slice the day wrong ([timezones.md](timezones.md)).
 
 ## No model call
 
 Deliberate, and a deviation worth naming. With no bodies the model would have a
 subject line and some names, and any sentence richer than those is invented. The
-subject the user wrote is already the most accurate description of the exchange
-that exists, so the page is assembled in Python — the way
+subject line is already the most accurate description of the exchange that
+exists, so the page is assembled in Python — the way
 `scribejay/strava_download.py` maps Strava fields onto calendar events with no
 natural-language step.
 
-## The noise filter
+It also settles the security question that reading the inbox opens. There is no
+prompt for a stranger's subject line to steer, because there is no prompt.
 
-Sent mail is not all correspondence. In a sample fortnight, 4 of 10 sent messages
-were software writing to the user rather than the user writing to anyone.
+## Untrusted text
+
+A sender picks their own subject line and their own display name, and both land
+in a Markdown file inside a folder he trusts. A subject of
+`[Unpaid invoice](http://evil.example)` would render as a live link with the
+real destination hidden behind friendly words.
+
+Every subject and every name goes through `safe_label`
+(`scribejay/core/text.py`) first. It turns Markdown and HTML syntax into spaces
+rather than deleting it, so `a|b` reads as `a b`, and truncates at 120
+characters. The real URL stays visible as plain text — that is the point:
+breaking the syntax leaves the deception on the page where it can be seen.
+
+Not an escape function. `\[Unpaid invoice\]` would be faithful to the original
+bytes, but a record of who wrote to you is a diary, not a transcript.
+
+**The store is the same surface a day later.** Text saved today is rendered
+tomorrow, so nothing is trusted for having been written to disk once.
+
+**People he does not know are shown with their real address.** A stranger can
+set their display name to anything, including a name he trusts; they cannot set
+the address. `Craig Dube <impostor@x.example>` is the case this exists for.
+Anyone already in the thread store is named plainly, because by then the name is
+one he has checked.
+
+**A sender cannot erase themselves.** `email.utils.getaddresses` returns
+`("", "")` for an unquoted display name containing brackets or parens, which
+would render the most hostile message in the mailbox as arriving from nobody.
+`_salvage` pulls the address back out of the angle brackets when the parser
+gives up.
+
+## The noise filters
+
+Sent and inbound need different filters, because the noise is different.
+
+**Sent.** In a sample fortnight, 4 of 10 sent messages were software writing to
+the user rather than the user writing to anyone.
 
 | Rule | Catches |
 |---|---|
@@ -54,22 +104,70 @@ A rejected third rule: *"the recipient is not a real address."* Real data
 disproved it — the unsubscribe went to
 `32.MRTVIML…@unsubscribe2.customer.io`, which is a perfectly valid address.
 
+**Inbound.** Filtered by Gmail, server-side, using its own category tabs:
+`-category:promotions -category:social -category:updates -category:forums`. A
+hand-kept list of newsletter senders would need a new entry every time he
+subscribes to something and would never be finished — the same reject-list trap
+the web fetcher avoids (AGENTS.md). Gmail already does this classification, per
+account, for free.
+
+Measured over seven real days it cut 28 arrived messages to 3, and all 3 were
+people. The closest call it dropped was a mailing-list note about one of his own
+talks, which lands in `updates`; that is the known cost of the filter.
+
 ## The page
 
-Two sections, from the **first** message of the day on each thread:
+Four sections. The first two come from the **first** message of the day on each
+thread; the last two are the reason the inbox is read at all.
 
 - `### Reached out` — a thread he started. Deciding to start something is the
   part of a day worth recording.
 - `### Replied` — answering, which is routine.
+- `### Came in, no answer yet` — arrived, and it is still his turn.
+- `### Gone quiet` — open past `QUIET_AFTER_DAYS` (3), from the thread store,
+  oldest first, with an age in days.
 
 One line per conversation, not per message: `**Subject** — Name, Name (3
-messages)`. Threads are grouped on Gmail's own thread id, and the `Re:` prefix is
-stripped because the section already says it was a reply.
+messages)`. Threads are grouped on Gmail's own thread id, and the `Re:` prefix
+is stripped because the section already says it was a reply. A thread never seen
+before is marked `*(first contact)*`.
+
+**Sent rows are walked first.** Her same-day reply must not decide whether he
+reached out, or every conversation he opened would read as one he was dragged
+into.
+
+**Whose turn it is compares whole timestamps, not dates.** A message that
+arrived at 17:00 after he answered at 09:00 is still his turn. Comparing dates
+would call that thread settled.
+
+**Three days before a thread counts as quiet.** That lets a Friday message wait
+out a weekend without becoming an item on Saturday's page. A thread touched
+today is never also quiet — it is today's news.
 
 **People are keyed on address, not on display name.** The same person arrives
 named on one message and bare on the next — Diego was on one real thread as both
 `Diego M. Oppenheimer` and `diego@meetup.example`, and a set of strings listed
 him twice. A real name beats a bare address whichever order the two arrive in.
+
+**One person with two addresses is named once.** A real page read
+`Derek Plautz, Derek Plautz`. The merge is on the *rendered* string, so two
+known addresses under one name collapse while a stranger borrowing that name
+renders with their address and survives as a separate entry.
+
+## The thread store
+
+`~/.scribejay/correspondence_threads.json`, one row per Gmail thread:
+`{subject, people, first_seen, last_inbound, last_outbound}`, pruned at 90 days.
+
+It is what makes "first contact" and "10 days" true statements rather than
+guesses. Three rules are pinned by tests:
+
+- `first_seen` only ever moves **backwards** — a backfill of an older day
+  corrects it; a later day must not.
+- `last_inbound` and `last_outbound` only ever move **forwards**.
+- The page is rendered from the store **as it stood before this run**, and the
+  day is folded in afterwards. Reversed, every thread reads as already known and
+  every age as zero.
 
 ## Where it writes, and why not the vault
 
@@ -83,16 +181,24 @@ it in a sibling folder costs one setting and removes the whole question.
 
 ## Behavior
 
-**A day with no qualifying mail writes nothing.** Normal on a weekend.
+**A day with no qualifying mail and no quiet threads writes nothing.** Normal on
+a weekend. A quiet Sunday with a week-old unanswered message still gets a page,
+because that thread is the whole point of the section.
 
-**Gmail failing logs a WARNING and the run still succeeds.** A dead source reads
-as an empty day to its caller, but never silently — that line is what separates a
-missing page caused by a broken API from one caused by a quiet day.
+**One failing fetcher still writes the other half, with a WARNING.** A dead
+source reads as an empty day to its caller, but never silently — that line is
+what separates a missing page caused by a broken API from one caused by a quiet
+day.
+
+**Both fetchers failing writes nothing.** A page built from two dead sources
+reads as a day he spoke to nobody, which is a different day. `_messages` keeps a
+failure (`None`) apart from an empty day (`[]`) precisely so this case can be
+told apart.
 
 **Not knowing the mailbox owner's address is a hard failure.** Every rule on the
 page is "everyone who is not him"; with no address the whole day looks like mail
-to strangers, which is worse than writing nothing. Gmail is not even queried until
-the identity resolves.
+to strangers, which is worse than writing nothing. Gmail is not even queried
+until the identity resolves.
 
 ## Running it by hand
 
@@ -105,6 +211,8 @@ the identity resolves.
 N ([logs.md](logs.md)), and one day whose fetch fails does not stop the rest.
 
 Re-running a day overwrites that day's file, so a backfill is safe to repeat.
+The store is safe to repeat too: stamps only move in one direction, so a
+re-run lands the same values.
 
 ## Related
 
