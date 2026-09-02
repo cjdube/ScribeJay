@@ -1,26 +1,41 @@
-"""Yesterday's sent mail, turned into a record of who was written to.
+"""Yesterday's mail, turned into a record of who he talked to.
 
 The record says what he built (scribejay/daily_commits.py), what he read
 (daily_chrome_learnings) and where his hours went (AI Session Time Blocks). None of it
 says who he talked to. This is the only source that does.
 
-**Metadata only.** `scribejay.sources.gmail.fetch_sent_metadata` asks Gmail for
-headers and nothing else, so the bodies are never fetched rather than fetched and
-discarded. What is recorded is who, when, about what subject line, and whether it
-was an answer or a decision to reach out.
+**Both directions.** Sent mail alone answers "who did I write to", which he
+already knows. The question worth a page is who wrote to *him* and is still
+waiting — so `render_page` carries four sections: what he started, what he
+answered, what arrived unanswered, and what has been open long enough to have
+been forgotten. The last two come from the inbound half and the thread store.
+
+**Metadata only.** Both fetchers in `scribejay.sources.gmail` ask Gmail for
+headers and nothing else, so the bodies are never fetched rather than fetched
+and discarded. What is recorded is who, when, about what subject line, and
+whose turn it is.
+
+**Every word a stranger chose goes through `safe_label` first.** A sender picks
+their own subject line and display name, and both land in a Markdown file he
+trusts — a subject of `[Unpaid invoice](http://evil.example)` would otherwise
+render as a live link inside the vault. See scribejay/core/text.py. The store
+is the same surface a day later: text written into it today is rendered
+tomorrow, so nothing is trusted for having been saved once.
 
 **No model call**, and not for want of one: with no bodies, the model would have
 only a subject and some names, and any sentence richer than those is invented. So
 the page is assembled in Python, the way scribejay/strava_download.py maps Strava
-fields onto calendar events without a natural-language step. The subject line the
-user wrote is the most accurate description of the exchange that exists.
+fields onto calendar events without a natural-language step. That also means the
+untrusted text above never reaches a prompt at all — there is no prompt.
 """
 
+import re
 from datetime import date
 from email.utils import getaddresses
 from pathlib import Path
 
 from scribejay.core import config
+from scribejay.core.text import safe_label
 from scribejay.core.store import atomic_write_json, load_json, locked
 
 DEFAULT_CORRESPONDENCE_DIR = str(Path.home() / "Documents" / "ScribeJay" / "correspondence")
@@ -49,6 +64,31 @@ def _recipients(row: dict) -> list:
             if addr]
 
 
+# An address inside angle brackets, for headers the stdlib parser gives up on.
+_ANGLE_ADDR = re.compile(r"<([^<>@\s]+@[^<>@\s]+)>")
+
+
+def _salvage(headers: list, me: str) -> dict:
+    """Addresses out of a header `getaddresses` could not read, as
+    {address: address}.
+
+    An **unquoted** display name containing brackets or parentheses makes
+    `email.utils.getaddresses` return an empty address rather than a bad name:
+    `[Your bank](http://evil) <sneak@x.example>` parses to ("", ""). So a
+    sender who names themselves that way vanishes from the page altogether,
+    and the record says a message arrived from nobody.
+
+    Real clients quote such a display name; this is the backstop for one that
+    does not. It keeps only the address, which is the half of a header a
+    sender cannot forge."""
+    found = {}
+    for header in headers:
+        for addr in _ANGLE_ADDR.findall(header or ""):
+            if addr.lower() != me:
+                found[addr.lower()] = addr.lower()
+    return found
+
+
 def _people(row: dict, me: str) -> dict:
     """The people on one message as {address: label}, never including the user.
 
@@ -60,7 +100,7 @@ def _people(row: dict, me: str) -> dict:
             continue
         label = (name or "").strip().strip('"')
         out[addr.lower()] = label or addr
-    return out
+    return out or _salvage([row.get("to", ""), row.get("cc", "")], me)
 
 
 def _merge_people(into: dict, more: dict) -> None:
@@ -93,29 +133,88 @@ def filter_noise(rows: list, me: str, logger=None) -> list:
     return kept
 
 
-def group_threads(rows: list, me: str) -> list:
-    """One row per conversation, in the order it was first written to.
+def filter_inbound_noise(rows: list, me: str, logger=None) -> list:
+    """Drop what arrived but is not correspondence.
 
-    Grouped on Gmail's own thread id, so four messages over an evening read as one
-    exchange rather than four. `reached_out` is taken from the FIRST message of
-    the day on the thread: answering is routine, and deciding to start something
-    is the part of a day worth recording."""
+    Much thinner than `filter_noise`, and deliberately so: Gmail's own category
+    tabs already did the heavy lifting server-side, in the query
+    (`sources/gmail.py`). Measured over seven real days that cut 28 inbound
+    messages to 3, and the 3 were the only humans in the set. The
+    self-addressed rule has no inbound equivalent either — anything he sent
+    carries Gmail's SENT label and the query already excluded it.
+
+    So what is left is the same subject list the sent side uses, applied for
+    symmetry: an unsubscribe confirmation really does arrive."""
+    kept = [row for row in rows
+            if (row.get("subject") or "").strip().lower() not in NOISE_SUBJECTS]
+    if logger and len(kept) < len(rows):
+        logger.info(f"filtered {len(rows) - len(kept)} of {len(rows)} arrived "
+                    "message(s) as machine mail")
+    return kept
+
+
+def _inbound_people(row: dict, me: str) -> dict:
+    """Who is on an arrived message: the sender, plus anyone else on To and Cc
+    who is not him.
+
+    The sender is merged first so their label wins — a bare address on the To
+    line must not overwrite the name the From header carried."""
+    out = {}
+    for name, addr in getaddresses([row.get("from", "")]):
+        if not addr or addr.lower() == me:
+            continue
+        out[addr.lower()] = (name or "").strip().strip('"') or addr
+    # The salvage matters most here: From is the one header a stranger writes.
+    out = out or _salvage([row.get("from", "")], me)
+    _merge_people(out, _people(row, me))
+    return out
+
+
+def group_day(sent_rows: list, inbox_rows: list, me: str) -> list:
+    """One entry per conversation touched today, both directions folded in.
+
+    Grouped on Gmail's own thread id, so four messages over an evening read as
+    one exchange rather than four.
+
+    `reached_out` is taken from the FIRST **sent** message of the day on the
+    thread: answering is routine, and deciding to start something is the part
+    of a day worth recording. Sent rows are walked first and the "first" is
+    tracked explicitly rather than inferred from whether the thread already
+    exists — otherwise a thread he opened at 9am and she answered at 11am
+    would read as *her* thread, because her message would have created it.
+    """
     threads: dict = {}
-    for row in rows:
+
+    def touch(row: dict) -> dict:
         key = row.get("thread_id") or row.get("message_id")
         thread = threads.get(key)
         if thread is None:
-            threads[key] = {
+            thread = threads[key] = {
                 "thread_id": key,
                 "subject": row.get("subject") or "(no subject)",
-                "people": _people(row, me),
-                "messages": 1,
-                "reached_out": not row.get("is_reply"),
-                "first": row.get("date", ""),
+                "people": {},
+                "messages": 0,
+                "reached_out": False,
+                "last_inbound": "",
+                "last_outbound": "",
             }
-            continue
         thread["messages"] += 1
+        return thread
+
+    started = set()
+    for row in sent_rows:
+        thread = touch(row)
         _merge_people(thread["people"], _people(row, me))
+        thread["last_outbound"] = max(thread["last_outbound"], row.get("date", ""))
+        if thread["thread_id"] not in started:
+            started.add(thread["thread_id"])
+            thread["reached_out"] = not row.get("is_reply")
+
+    for row in inbox_rows:
+        thread = touch(row)
+        _merge_people(thread["people"], _inbound_people(row, me))
+        thread["last_inbound"] = max(thread["last_inbound"], row.get("date", ""))
+
     return list(threads.values())
 
 
@@ -128,28 +227,116 @@ def _subject_label(subject: str) -> str:
     return label or "(no subject)"
 
 
-def render_page(threads: list, day) -> str:
+# How long a thread sits with the ball in his court before the page nags about
+# it. Three days lets a Friday message wait out a weekend without becoming an
+# item on Saturday's page.
+QUIET_AFTER_DAYS = 3
+
+
+def _person(addr: str, name: str, known_addresses: set) -> str:
+    """One person, as the page names them.
+
+    A display name is chosen by whoever sent the mail, so it goes through
+    `safe_label` and — for anybody not already in the store — is shown next to
+    the real address. A stranger can set their display name to his wife's; they
+    cannot set the address. Anyone he has corresponded with before is named
+    plainly, because by then the name is one he has already checked."""
+    shown = safe_label(name) or safe_label(addr) or "(unnamed)"
+    if addr in known_addresses or shown == safe_label(addr):
+        return shown
+    return f"{shown} <{safe_label(addr)}>"
+
+
+def _people_label(people: dict, known_addresses: set) -> str:
+    return ", ".join(_person(addr, name, known_addresses)
+                     for addr, name in people.items()) or "(nobody named)"
+
+
+def _line(subject: str, people: str, suffix: str = "") -> str:
+    """One bullet. The subject is neutralized and then falls back to a
+    placeholder, because a subject made only of Markdown syntax is emptied by
+    `safe_label` and would otherwise render as an empty bold run."""
+    label = safe_label(_subject_label(subject)) or "(no subject)"
+    return f"- **{label}** — {people}{suffix}"
+
+
+def _turn(thread: dict, known: dict) -> bool:
+    """Whose turn it is once today's activity is folded onto what we knew.
+
+    Read from the merge rather than from today alone: a message that arrived
+    yesterday and was answered this morning is settled, and one that arrived
+    last week and is still unanswered is not — neither fact is visible in a
+    single day's rows."""
+    prior = known.get(thread["thread_id"], {})
+    return owes_reply({
+        "last_inbound": max(thread["last_inbound"], prior.get("last_inbound") or ""),
+        "last_outbound": max(thread["last_outbound"], prior.get("last_outbound") or ""),
+    })
+
+
+def quiet_threads(known: dict, active: set, day) -> list:
+    """Older conversations where the ball is still in his court, as
+    (age_in_days, thread_id, row), oldest first.
+
+    Anything touched today is excluded — the "came in" section already carries
+    it, and a thread cannot be both today's news and forgotten. Sorted oldest
+    first so the one most likely to have been dropped reads first.
+
+    Public because the task asks it whether a day with no mail is still worth a
+    page: a quiet Sunday with a week-old unanswered message has something to
+    say, and skipping it would hide exactly the thread this section is for."""
+    aged = []
+    for key, row in known.items():
+        if key in active or not owes_reply(row):
+            continue
+        age = days_since(row.get("last_inbound", ""), day)
+        if age >= QUIET_AFTER_DAYS:
+            aged.append((age, key, row))
+    return sorted(aged, key=lambda triple: -triple[0])
+
+
+def render_page(threads: list, known: dict, day) -> str:
     """The whole page, in Python. See the module docstring for why no model runs
     over this: with no bodies, anything beyond the subject and the names would be
-    invented."""
-    reached = [t for t in threads if t["reached_out"]]
-    replied = [t for t in threads if not t["reached_out"]]
+    invented.
 
-    def block(title: str, rows: list) -> list:
-        lines = [f"### {title}"]
-        if not rows:
-            lines.append("- **None:** [No qualifying items for this section]")
-            return lines
-        for t in rows:
-            people = ", ".join(t["people"].values()) or "(no recipient)"
-            count = f" ({t['messages']} messages)" if t["messages"] > 1 else ""
-            lines.append(f"- **{_subject_label(t['subject'])}** — {people}{count}")
-        return lines
+    `known` is the thread store as it stood **before** today was folded in — it
+    is what makes "first contact" and an age in days true statements rather
+    than guesses. Fold today in afterwards, with `remember_threads`.
+    """
+    known_addresses = {addr for row in known.values()
+                       for addr in (row.get("people") or {})}
+    active = {t["thread_id"] for t in threads}
+
+    def today_line(thread: dict) -> str:
+        count = f" ({thread['messages']} messages)" if thread["messages"] > 1 else ""
+        first = " *(first contact)*" if thread["thread_id"] not in known else ""
+        return _line(thread["subject"],
+                     _people_label(thread["people"], known_addresses),
+                     count + first)
+
+    reached = [today_line(t) for t in threads if t["reached_out"]]
+    replied = [today_line(t) for t in threads
+               if t["last_outbound"] and not t["reached_out"]]
+    incoming = [today_line(t) for t in threads
+                if t["last_inbound"] and _turn(t, known)]
+
+    quiet = [_line(row.get("subject", ""),
+                   _people_label(row.get("people") or {}, known_addresses),
+                   f" — {age} days")
+             for age, _, row in quiet_threads(known, active, day)]
+
+    def block(title: str, lines: list) -> list:
+        if not lines:
+            return [f"### {title}", "- **None:** [No qualifying items for this section]"]
+        return [f"### {title}"] + lines
 
     return "\n".join(
         [f"## Correspondence: {day:%B %-d, %Y}", ""]
         + block("Reached out", reached) + [""]
         + block("Replied", replied) + [""]
+        + block("Came in, no answer yet", incoming) + [""]
+        + block("Gone quiet", quiet) + [""]
     )
 
 

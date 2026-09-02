@@ -86,7 +86,7 @@ def test_nothing_dropped_is_silent():
 
 
 # --------------------------------------------------------------------------- #
-# group_threads
+# group_day
 # --------------------------------------------------------------------------- #
 
 def test_a_conversation_is_one_row_not_four():
@@ -94,7 +94,7 @@ def test_a_conversation_is_one_row_not_four():
                  cc="diego@meetup.example", is_reply=True, thread="T"),
             _row("howie@howie.example", "Re: Chat about local-first agents?",
                  cc="diego@meetup.example", is_reply=True, thread="T")]
-    threads = co.group_threads(rows, ME)
+    threads = co.group_day(rows, [], ME)
     assert len(threads) == 1
     assert threads[0]["messages"] == 2
 
@@ -107,7 +107,7 @@ def test_one_person_named_on_one_message_and_bare_on_another_is_listed_once():
             _row("howie@howie.example", "Re: Chat",
                  cc='"Diego M. Oppenheimer" <diego@meetup.example>',
                  is_reply=True, thread="T")]
-    people = list(co.group_threads(rows, ME)[0]["people"].values())
+    people = list(co.group_day(rows, [], ME)[0]["people"].values())
     assert people.count("Diego M. Oppenheimer") == 1
     assert "diego@meetup.example" not in people   # the name won, not the address
 
@@ -117,12 +117,12 @@ def test_the_display_name_wins_whichever_message_carried_it(order):
     named = _row("a@b.com", "Re: X", cc='"Real Name" <c@d.com>', is_reply=True, thread="T")
     bare = _row("a@b.com", "Re: X", cc="c@d.com", is_reply=True, thread="T")
     rows = [named, bare] if order == "named_first" else [bare, named]
-    assert co.group_threads(rows, ME)[0]["people"]["c@d.com"] == "Real Name"
+    assert co.group_day(rows, [], ME)[0]["people"]["c@d.com"] == "Real Name"
 
 
 def test_he_is_never_listed_among_the_people():
     rows = [_row("gavin.lawton@client.example", "Re: Catch Up", cc=ME, is_reply=True)]
-    assert ME not in co.group_threads(rows, ME)[0]["people"]
+    assert ME not in co.group_day(rows, [], ME)[0]["people"]
 
 
 def test_reached_out_comes_from_the_first_message_of_the_day():
@@ -130,12 +130,12 @@ def test_reached_out_comes_from_the_first_message_of_the_day():
     # reached out, not that he replied to himself.
     rows = [_row("a@b.com", "New idea", thread="T", is_reply=False),
             _row("a@b.com", "Re: New idea", thread="T", is_reply=True)]
-    assert co.group_threads(rows, ME)[0]["reached_out"] is True
+    assert co.group_day(rows, [], ME)[0]["reached_out"] is True
 
 
 def test_a_reply_thread_is_not_reaching_out():
     rows = [_row("a@b.com", "Re: Old thread", thread="T", is_reply=True)]
-    assert co.group_threads(rows, ME)[0]["reached_out"] is False
+    assert co.group_day(rows, [], ME)[0]["reached_out"] is False
 
 
 # --------------------------------------------------------------------------- #
@@ -148,10 +148,10 @@ DAY = date(2026, 8, 21)
 
 
 def test_the_page_separates_reaching_out_from_replying():
-    threads = co.group_threads(
+    threads = co.group_day(
         [_row("kat@vendor.example", "checking in", thread="A"),
-         _row("gavin.lawton@client.example", "Re: Catch Up", is_reply=True, thread="B")], ME)
-    page = co.render_page(threads, DAY)
+         _row("gavin.lawton@client.example", "Re: Catch Up", is_reply=True, thread="B")], [], ME)
+    page = co.render_page(threads, {}, DAY)
     reached, replied = page.split("### Replied")
     assert "checking in" in reached
     assert "Catch Up" in replied
@@ -159,30 +159,30 @@ def test_the_page_separates_reaching_out_from_replying():
 
 def test_the_reply_prefix_is_dropped_from_the_heading():
     # Which section it is in already says it was a reply.
-    threads = co.group_threads([_row("a@b.com", "RE: Re: Catch Up", is_reply=True)], ME)
-    assert "**Catch Up**" in co.render_page(threads, DAY)
+    threads = co.group_day([_row("a@b.com", "RE: Re: Catch Up", is_reply=True)], [], ME)
+    assert "**Catch Up**" in co.render_page(threads, {}, DAY)
 
 
 def test_a_multi_message_thread_says_how_many():
-    threads = co.group_threads(
+    threads = co.group_day(
         [_row("a@b.com", "Re: X", is_reply=True, thread="T"),
-         _row("a@b.com", "Re: X", is_reply=True, thread="T")], ME)
-    assert "(2 messages)" in co.render_page(threads, DAY)
+         _row("a@b.com", "Re: X", is_reply=True, thread="T")], [], ME)
+    assert "(2 messages)" in co.render_page(threads, {}, DAY)
 
 
 def test_a_single_message_thread_says_nothing_about_count():
-    threads = co.group_threads([_row("a@b.com", "Re: X", is_reply=True)], ME)
-    assert "messages)" not in co.render_page(threads, DAY)
+    threads = co.group_day([_row("a@b.com", "Re: X", is_reply=True)], [], ME)
+    assert "messages)" not in co.render_page(threads, {}, DAY)
 
 
 def test_an_empty_section_gets_the_none_marker():
-    threads = co.group_threads([_row("a@b.com", "Re: X", is_reply=True)], ME)
-    page = co.render_page(threads, DAY)
+    threads = co.group_day([_row("a@b.com", "Re: X", is_reply=True)], [], ME)
+    page = co.render_page(threads, {}, DAY)
     assert page.split("### Replied")[0].count("**None:**") == 1
 
 
 def test_the_date_is_written_by_python():
-    assert co.render_page([], DAY).startswith("## Correspondence: August 21, 2026")
+    assert co.render_page([], {}, DAY).startswith("## Correspondence: August 21, 2026")
 
 
 def test_the_page_never_carries_a_body_or_a_snippet():
@@ -191,7 +191,7 @@ def test_the_page_never_carries_a_body_or_a_snippet():
     row = _row("a@b.com", "Re: X", is_reply=True)
     row["body"] = "SECRET BODY TEXT"
     row["snippet"] = "SECRET SNIPPET"
-    page = co.render_page(co.group_threads([row], ME), DAY)
+    page = co.render_page(co.group_day([row], [], ME), {}, DAY)
     assert "SECRET" not in page
 
 
@@ -385,3 +385,168 @@ def test_running_the_same_day_twice_changes_nothing():
     once = co.store_path().read_text()
     co.remember_threads(entries, TODAY)
     assert co.store_path().read_text() == once
+
+
+# --------------------------------------------------------------------------- #
+# The inbound half and the four-section page.
+#
+# Every subject and display name below is chosen by the sender, which is what
+# separates these from the sent-side tests above: there, the text is his own.
+# --------------------------------------------------------------------------- #
+
+def _in(sender="Kat <kat@vendor.example>", subject="Proposal", thread="T",
+        to=ME, cc="", date="2026-08-21 11:00", message_id="i1"):
+    return {"message_id": message_id, "thread_id": thread, "from": sender,
+            "to": to, "cc": cc, "subject": subject, "date": date,
+            "header_id": "<h1>", "references": ""}
+
+
+def test_the_page_has_the_four_sections():
+    page = co.render_page([], {}, DAY)
+    for heading in ("### Reached out", "### Replied",
+                    "### Came in, no answer yet", "### Gone quiet"):
+        assert heading in page
+
+
+def test_arrived_mail_he_has_not_answered_lands_in_its_own_section():
+    threads = co.group_day([], [_in(subject="Can you look at this?")], ME)
+    section = co.render_page(threads, {}, DAY).split("### Came in, no answer yet")[1]
+    assert "Can you look at this?" in section
+
+
+def test_a_message_he_answered_the_same_day_is_not_still_waiting():
+    """He replied at 12:00 to something that arrived at 11:00. It is her turn,
+    so the section that exists to catch what he owes must not list it."""
+    threads = co.group_day(
+        [_row("kat@vendor.example", "Re: Proposal", is_reply=True, thread="T",
+              date="2026-08-21 12:00")],
+        [_in(thread="T", date="2026-08-21 11:00")], ME)
+    section = co.render_page(threads, {}, DAY).split("### Came in, no answer yet")[1]
+    assert "**None:**" in section.split("### Gone quiet")[0]
+
+
+def test_a_message_that_arrived_after_he_answered_is_still_his_turn():
+    # The clock-not-the-date rule, seen through the page rather than the store.
+    threads = co.group_day(
+        [_row("kat@vendor.example", "Re: Proposal", is_reply=True, thread="T",
+              date="2026-08-21 09:00")],
+        [_in(thread="T", date="2026-08-21 17:00")], ME)
+    section = co.render_page(threads, {}, DAY).split("### Came in, no answer yet")[1]
+    assert "Proposal" in section.split("### Gone quiet")[0]
+
+
+def test_he_reached_out_even_when_she_answered_the_same_day():
+    """The ordering bug this grouping was written to avoid: her reply creates
+    nothing, because the day's first SENT message is what decides."""
+    threads = co.group_day(
+        [_row("kat@vendor.example", "New idea", thread="T", date="2026-08-21 09:00")],
+        [_in(thread="T", subject="Re: New idea", date="2026-08-21 11:00")], ME)
+    assert threads[0]["reached_out"] is True
+
+
+# ---- the continuity notes ----------------------------------------------------
+
+def test_a_thread_we_have_never_seen_is_marked_first_contact():
+    threads = co.group_day([_row("new@x.example", "Hello", thread="NEW")], [], ME)
+    assert "*(first contact)*" in co.render_page(threads, {}, DAY)
+
+
+def test_a_thread_we_already_knew_is_not_marked_first_contact():
+    known = {"T": {"subject": "Hello", "people": {"new@x.example": "New"},
+                   "last_outbound": "2026-08-01 09:00"}}
+    threads = co.group_day([_row("new@x.example", "Hello", thread="T")], [], ME)
+    assert "*(first contact)*" not in co.render_page(threads, known, DAY)
+
+
+def test_an_older_unanswered_thread_is_listed_as_gone_quiet_with_its_age():
+    known = {"OLD": {"subject": "Budget question",
+                     "people": {"max@x.example": "Max"},
+                     "last_inbound": "2026-08-11 09:00",
+                     "last_outbound": "2026-08-01 09:00"}}
+    section = co.render_page([], known, DAY).split("### Gone quiet")[1]
+    assert "Budget question" in section
+    assert "10 days" in section
+
+
+def test_gone_quiet_lists_the_oldest_first():
+    known = {
+        "A": {"subject": "Recent", "people": {"a@x.example": "A"},
+              "last_inbound": "2026-08-17 09:00", "last_outbound": ""},
+        "B": {"subject": "Ancient", "people": {"b@x.example": "B"},
+              "last_inbound": "2026-08-01 09:00", "last_outbound": ""},
+    }
+    section = co.render_page([], known, DAY).split("### Gone quiet")[1]
+    assert section.index("Ancient") < section.index("Recent")
+
+
+def test_a_thread_touched_today_is_not_also_gone_quiet():
+    # It is today's news; it cannot also be forgotten.
+    known = {"T": {"subject": "Proposal", "people": {"kat@vendor.example": "Kat"},
+                   "last_inbound": "2026-08-01 09:00", "last_outbound": ""}}
+    threads = co.group_day([], [_in(thread="T")], ME)
+    section = co.render_page(threads, known, DAY).split("### Gone quiet")[1]
+    assert "**None:**" in section
+
+
+def test_a_thread_quiet_for_less_than_the_threshold_is_left_alone():
+    """A message that arrived yesterday is not a forgotten thread. Without a
+    floor every reply-in-progress would be nagged about the next morning."""
+    known = {"T": {"subject": "Yesterday", "people": {"a@x.example": "A"},
+                   "last_inbound": "2026-08-20 09:00", "last_outbound": ""}}
+    section = co.render_page([], known, DAY).split("### Gone quiet")[1]
+    assert "**None:**" in section
+
+
+# ---- untrusted text ----------------------------------------------------------
+
+def test_a_hostile_subject_cannot_plant_a_link_in_the_page():
+    threads = co.group_day([], [_in(subject="[Unpaid invoice](http://evil.example)")], ME)
+    page = co.render_page(threads, {}, DAY)
+    assert "](http://evil.example)" not in page
+    assert "Unpaid invoice" in page          # still readable
+    assert "http://evil.example" in page     # and the real address is visible
+
+
+def test_a_hostile_display_name_cannot_plant_a_link_either():
+    threads = co.group_day(
+        [], [_in(sender='"[Your bank](http://evil.example)" <sneak@x.example>')], ME)
+    page = co.render_page(threads, {}, DAY)
+    assert "](http://evil.example)" not in page
+
+
+def test_a_sender_cannot_erase_themselves_with_an_unquoted_bracket_name():
+    """email.utils.getaddresses returns ("", "") for an unquoted display name
+    containing brackets — so without the salvage the page would say a message
+    arrived from nobody, which is the most useful outcome for a stranger."""
+    threads = co.group_day(
+        [], [_in(sender="[Your bank](http://evil.example) <sneak@x.example>")], ME)
+    assert "sneak@x.example" in co.render_page(threads, {}, DAY)
+
+
+def test_an_unfamiliar_person_is_shown_with_their_real_address():
+    # A display name is free text; the address is not. Anyone he has not
+    # corresponded with before is named next to the half they cannot forge.
+    threads = co.group_day([], [_in(sender="Craig Dube <impostor@x.example>")], ME)
+    assert "Craig Dube <impostor@x.example>" in co.render_page(threads, {}, DAY)
+
+
+def test_someone_already_in_the_store_is_named_plainly():
+    known = {"OTHER": {"subject": "x", "people": {"kat@vendor.example": "Kat"},
+                       "last_outbound": "2026-08-01 09:00"}}
+    threads = co.group_day([], [_in(sender="Kat <kat@vendor.example>")], ME)
+    page = co.render_page(threads, known, DAY)
+    assert "Kat" in page
+    assert "kat@vendor.example" not in page
+
+
+def test_a_subject_made_only_of_markup_falls_back_to_a_placeholder():
+    # safe_label empties it, and an empty bold run would render as "**  **".
+    threads = co.group_day([], [_in(subject="[]`<>|")], ME)
+    assert "**(no subject)**" in co.render_page(threads, {}, DAY)
+
+
+def test_an_arrived_row_carrying_a_body_still_renders_none_of_it():
+    row = _in()
+    row["body"] = "SECRET BODY TEXT"
+    row["snippet"] = "SECRET SNIPPET"
+    assert "SECRET" not in co.render_page(co.group_day([], [row], ME), {}, DAY)

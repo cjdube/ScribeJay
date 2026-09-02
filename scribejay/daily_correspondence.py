@@ -1,14 +1,23 @@
-"""Write a daily record of who was written to, into CORRESPONDENCE_DIR.
+"""Write a daily record of who he talked to, into CORRESPONDENCE_DIR.
 
 Non-interactive — run by launchd every morning, covering the prior day. Reads
-Gmail's SENT metadata (headers only, never bodies) via
-`scribejay.sources.gmail.fetch_sent_metadata`, drops mail sent to the user
-himself, groups the rest by conversation, and writes the page in Python.
+both halves of the day as metadata (headers only, never bodies) via
+`scribejay.sources.gmail`: `fetch_sent_metadata` for what he wrote and
+`fetch_inbox_metadata` for what arrived. Drops mail sent to himself, groups the
+rest by conversation, adds the threads that have been open too long, and writes
+the page in Python.
+
+**A failing half is not an empty half.** Each fetcher degrades to
+{"error": ...}, so a day Gmail refused to answer and a day he wrote to nobody
+arrive here looking identical. `_messages` keeps them apart — None for the
+first, [] for the second — because only one of them should cost the page.
 
 **No model call.** With no bodies there is nothing to summarize that the subject
 line does not already say, and a richer sentence would be invented — see
 scribejay/correspondence.py. `scribejay/strava_download.py` is the other task
-shaped this way.
+shaped this way. It is also what keeps a stranger's subject line away from a
+prompt: reading the inbox adds untrusted text, and there is nothing here for it
+to steer.
 
 **Not the vault's raw/.** These pages name people and the companies they work
 for; the ingest queue would turn them into asserted wiki pages. See
@@ -33,41 +42,73 @@ from scribejay.core.dates import local_timezone, prior_day
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.correspondence import (
     _correspondence_dir,
+    filter_inbound_noise,
     filter_noise,
-    group_threads,
+    group_day,
+    load_threads,
+    quiet_threads,
+    remember_threads,
     render_page,
 )
 from scribejay.sinks.vault import persist_or_email
-from scribejay.sources.gmail import fetch_sent_metadata, my_address
+from scribejay.sources.gmail import (
+    fetch_inbox_metadata,
+    fetch_sent_metadata,
+    my_address,
+)
+
+
+def _messages(name: str, result: dict, day, logger):
+    """One fetcher's rows, or None when it failed.
+
+    None rather than [] on purpose: a day he wrote to nobody and a day Gmail
+    would not answer look identical downstream, and only one of them should
+    cost the page. The WARNING is what says which — a source that fails reads
+    as empty to its caller, but never silently."""
+    if "error" in result:
+        logger.warning(f"{name} failed for {day}: {result['error']}")
+        return None
+    logger.info(f"{name} -> {result['count']} message(s) on {day}")
+    return result["messages"]
 
 
 def _run_for_day(start, end, day, me, logger) -> None:
     """Build and persist one day's page. Raises on failure — main() owns the run
     boundary and the alert, so a backfill is one run in the dashboard's history
     rather than N half-runs."""
-    result = fetch_sent_metadata(start, end)
-    if "error" in result:
-        # A source that fails reads as an empty day to its caller, but never
-        # silently: this is the line that says the page is missing because
-        # Gmail failed, not because he wrote to nobody.
-        logger.warning(f"fetch_sent_metadata failed for {day}: {result['error']}")
+    sent = _messages("fetch_sent_metadata", fetch_sent_metadata(start, end), day, logger)
+    inbox = _messages("fetch_inbox_metadata", fetch_inbox_metadata(start, end), day, logger)
+    if sent is None and inbox is None:
+        # Both halves of the conversation are missing. A page built from that
+        # would read as a day he spoke to nobody, which is a different day.
         return
-    logger.info(f"fetch_sent_metadata -> {result['count']} sent message(s) on {day}")
 
-    rows = filter_noise(result["messages"], me, logger=logger)
-    if not rows:
+    sent_rows = filter_noise(sent or [], me, logger=logger)
+    inbox_rows = filter_inbound_noise(inbox or [], me, logger=logger)
+
+    # Read BEFORE today is folded in. "First contact" and every age in days is
+    # a claim about the state that existed before this run.
+    known = load_threads()
+    threads = group_day(sent_rows, inbox_rows, me)
+    active = {t["thread_id"] for t in threads}
+    quiet = quiet_threads(known, active, day)
+    logger.info(f"{len(threads)} conversation(s) from {len(sent_rows)} sent and "
+                f"{len(inbox_rows)} arrived message(s); {len(quiet)} gone quiet")
+
+    if not threads and not quiet:
         logger.info(f"No correspondence on {day}; nothing to write")
         return
 
-    threads = group_threads(rows, me)
-    logger.info(f"{len(threads)} conversation(s) from {len(rows)} message(s)")
-
     persist_or_email(
-        render_page(threads, day), "Correspondence", day,
+        render_page(threads, known, day), "Correspondence", day,
         subject=f"Correspondence (needs manual paste) - {day:%Y-%m-%d}",
         task_name="daily_correspondence", logger=logger,
         directory=_correspondence_dir(),
     )
+    # After the page, never before: the page states what was true at the start
+    # of the run, and folding today in first would make every thread read as
+    # already known and every age as zero.
+    remember_threads(threads, day)
 
 
 def main() -> int:

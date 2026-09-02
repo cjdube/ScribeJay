@@ -21,6 +21,10 @@ suite-wide rather than per-test — a missed convention has to stay harmless:
   he has ever written to and when. A test that reached it would poison the
   continuity notes on his real pages — "first contact" is a claim about that
   file. Redirected below.
+- `sources/gmail.py` reads the user's real mailbox. Both fetchers degrade to
+  {"error": ...} on failure, so a test that reached Gmail would still pass —
+  the block below raises a BaseException instead, which that degrade path
+  cannot swallow.
 - `core/usage_ledger.py` appends a row to logs/usage.jsonl on every model
   call, and drops a .lock sidecar beside it. Redirected below.
 - ClickUp and Gemini are both live network egress the suite must never reach.
@@ -80,6 +84,7 @@ from scribejay.core.backends import gemini as _gemini_backend  # noqa: E402
 from scribejay.core.backends import openrouter as _openrouter_backend  # noqa: E402
 from scribejay.sinks import email as _email  # noqa: E402
 from scribejay.sources import clickup as _clickup  # noqa: E402
+from scribejay.sources import gmail as _gmail  # noqa: E402
 from scribejay.sources import transcripts as _chat_transcripts  # noqa: E402
 from scribejay.sources import web_fetch as _web_fetch  # noqa: E402
 from scribejay import ai_chat_learnings as _ai_chat_learnings  # noqa: E402
@@ -158,6 +163,31 @@ def _isolate_vault_dirs(tmp_path, monkeypatch):
     # time — a second real vault path, deliberately kept out of the ingest
     # queue, and it gets the same backstop.
     monkeypatch.setenv("CORRESPONDENCE_DIR", str(tmp_path))
+
+
+class _GmailEgress(BaseException):
+    """Deliberately NOT an Exception. `sources/gmail.py` ends its fetchers in
+    `except Exception: return {"error": ...}` (degrade-don't-crash), so an
+    ordinary error raised by this guard would be caught by the very code it
+    guards and returned as a tidy error dict — the test would pass having
+    proved nothing, and a real run would still have gone to the network."""
+
+
+@pytest.fixture(autouse=True)
+def _block_gmail_egress(monkeypatch):
+    """Stub the one client choke point in sources/gmail.py.
+
+    Added when the module grew a second fetcher. Until then `daily_correspondence`
+    stubbed the single function it called and that was enough — which is exactly
+    the fragility AGENTS.md warns about: the day a second entry point appeared,
+    every test of that task started reaching for the user's real mailbox and
+    still passed, because the fetcher degrades on failure. Per-test stubbing is
+    the convention; this is the backstop that makes missing one loud."""
+    def _blocked(*a, **k):
+        raise _GmailEgress(
+            "a test reached the live Gmail API — stub the caller's fetch "
+            "function, or scribejay.sources.gmail._service, in that test.")
+    monkeypatch.setattr(_gmail, "_service", _blocked)
 
 
 @pytest.fixture(autouse=True)

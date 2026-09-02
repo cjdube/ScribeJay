@@ -304,3 +304,16 @@ def test_the_feature_probe_is_not_what_the_suite_relies_on(monkeypatch):
 
     monkeypatch.setattr(features, "configured", lambda n: False)
     assert all(features.enabled(n) for n in features.NAMES)
+
+
+def test_the_live_gmail_api_is_blocked():
+    """Not a stub that returns nothing — a raise. Both fetchers in
+    sources/gmail.py turn any exception into {"error": ...}, so a test that
+    reached the real mailbox would go on passing. The guard raises a
+    BaseException so that degrade path cannot swallow it."""
+    from datetime import datetime
+
+    from scribejay.sources import gmail
+
+    with pytest.raises(BaseException, match="reached the live Gmail API"):
+        gmail.fetch_inbox_metadata(datetime(2026, 8, 21), datetime(2026, 8, 22))

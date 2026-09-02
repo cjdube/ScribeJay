@@ -37,6 +37,12 @@ def stubbed_run(monkeypatch):
              "subject": "Re: Catch Up", "date": "2026-08-21 10:00", "is_reply": True}]}
 
     monkeypatch.setattr(dc, "fetch_sent_metadata", _fetch)
+    # The inbound half, stubbed empty by default. Left unstubbed it reaches the
+    # real Gmail API — and because the fetcher degrades to {"error": ...} the
+    # test would still pass, which is what tests/conftest.py's Gmail guard now
+    # refuses. Tests that care about arrived mail re-patch this.
+    monkeypatch.setattr(dc, "fetch_inbox_metadata",
+                        lambda *a, **k: {"count": 0, "messages": []})
     monkeypatch.setattr(dc, "my_address", lambda: ME)
     monkeypatch.setattr(dc, "persist_or_email",
                         lambda content, prefix, day, subject, task_name, logger, directory=None:
@@ -169,3 +175,104 @@ def test_a_write_failure_is_a_failed_run(stubbed_run, monkeypatch):
     monkeypatch.setattr(dc, "notify_failure", lambda name, detail, logger=None: alerts.append(str(detail)))
     assert dc.main() == 1
     assert any("vault gone" in a for a in alerts)
+
+
+# --------------------------------------------------------------------------- #
+# The inbound half, and the order the two halves and the store are touched in.
+# --------------------------------------------------------------------------- #
+
+def _seed_quiet_thread() -> None:
+    """One month-old thread he never answered, already in the store."""
+    from scribejay import correspondence as co
+    from scribejay.core.store import atomic_write_json
+    atomic_write_json(co.store_path(), {"threads": {"OLD": {
+        "subject": "Budget question", "people": {"max@x.example": "Max"},
+        "first_seen": "2026-08-01 09:00", "last_inbound": "2026-08-01 09:00",
+        "last_outbound": ""}}})
+
+
+def _inbox(**over):
+    row = {"message_id": "i1", "thread_id": "IN", "from": "Sam <sam@x.example>",
+           "to": ME, "cc": "", "subject": "Question for you",
+           "date": "2026-08-21 11:00", "header_id": "<h1>", "references": ""}
+    row.update(over)
+    return row
+
+
+def test_arrived_mail_reaches_the_page(stubbed_run, monkeypatch):
+    monkeypatch.setattr(dc, "fetch_inbox_metadata",
+                        lambda *a, **k: {"count": 1, "messages": [_inbox()]})
+    assert dc.main() == 0
+    assert "Question for you" in stubbed_run["persists"][0][2]
+
+
+def test_a_day_with_only_arrived_mail_still_writes_a_page(stubbed_run, monkeypatch):
+    # The whole reason for reading the inbox: a day he answered nobody used to
+    # produce no page at all, which is the day worth seeing.
+    monkeypatch.setattr(dc, "fetch_sent_metadata", lambda *a, **k: {"count": 0, "messages": []})
+    monkeypatch.setattr(dc, "fetch_inbox_metadata",
+                        lambda *a, **k: {"count": 1, "messages": [_inbox()]})
+    assert dc.main() == 0
+    assert len(stubbed_run["persists"]) == 1
+
+
+def test_one_failing_half_still_writes_the_other(stubbed_run, monkeypatch, capsys):
+    monkeypatch.setattr(dc, "fetch_inbox_metadata", lambda *a, **k: {"error": "boom"})
+    assert dc.main() == 0
+    assert len(stubbed_run["persists"]) == 1
+    assert any("fetch_inbox_metadata failed" in m for m in _messages(capsys))
+
+
+def test_both_halves_failing_writes_nothing(stubbed_run, monkeypatch):
+    """A page built from two dead sources reads as a day he spoke to nobody.
+    That is a different day, and the record must not claim it.
+
+    The store is seeded on purpose. With both fetchers dead but a quiet thread
+    waiting, there IS something to render — so this is the only arrangement
+    where treating a failure as an empty day actually produces a false page,
+    and the only one that can prove the distinction is real."""
+    _seed_quiet_thread()
+    monkeypatch.setattr(dc, "fetch_sent_metadata", lambda *a, **k: {"error": "boom"})
+    monkeypatch.setattr(dc, "fetch_inbox_metadata", lambda *a, **k: {"error": "boom"})
+    assert dc.main() == 0
+    assert stubbed_run["persists"] == []
+
+
+def test_a_failing_half_is_not_confused_with_an_empty_one(stubbed_run, monkeypatch, capsys):
+    # Both halves answer; one is simply an empty day. No warning belongs here.
+    monkeypatch.setattr(dc, "fetch_inbox_metadata", lambda *a, **k: {"count": 0, "messages": []})
+    assert dc.main() == 0
+    assert not any("failed" in m for m in _messages(capsys))
+
+
+def test_the_run_still_ends_cleanly_when_a_half_fails(stubbed_run, monkeypatch, capsys):
+    # The dashboard reads run history from these lines, not from exit codes.
+    monkeypatch.setattr(dc, "fetch_inbox_metadata", lambda *a, **k: {"error": "boom"})
+    assert dc.main() == 0
+    messages = _messages(capsys)
+    assert any(is_run_start(m) for m in messages)
+    assert any(is_run_success(m) for m in messages)
+
+
+def test_the_day_is_remembered_after_the_page_is_written(stubbed_run):
+    from scribejay import correspondence as co
+    assert dc.main() == 0
+    assert "T" in co.load_threads()
+
+
+def test_the_page_describes_the_state_before_this_run(stubbed_run, monkeypatch):
+    """Order matters: fold today into the store first and every thread reads as
+    already known, so nothing is ever a first contact again."""
+    monkeypatch.setattr(dc, "fetch_sent_metadata", lambda *a, **k: {"count": 1, "messages": [
+        {"message_id": "m1", "thread_id": "BRAND-NEW", "to": "New <new@x.example>",
+         "cc": "", "subject": "Hello", "date": "2026-08-21 10:00", "is_reply": False}]})
+    assert dc.main() == 0
+    assert "*(first contact)*" in stubbed_run["persists"][0][2]
+
+
+def test_a_thread_that_went_quiet_pulls_a_page_on_an_otherwise_silent_day(
+        stubbed_run, monkeypatch):
+    _seed_quiet_thread()
+    monkeypatch.setattr(dc, "fetch_sent_metadata", lambda *a, **k: {"count": 0, "messages": []})
+    assert dc.main() == 0
+    assert "Budget question" in stubbed_run["persists"][0][2]
