@@ -65,6 +65,11 @@ BLIND_LETTERS = ("V", "Z")
 TASKS = ("daily_chrome_learnings", "daily_youtube_learnings")
 
 DEFAULT_DAYS = 7
+# A day with two visits produces one bullet from any model. Comparing two
+# drafts of nothing measures nothing, and four such days in a seven-day sample
+# is how a bake-off reports a tie it never actually tested. Chrome only —
+# YouTube's own filter is "was anything Liked", which is already this test.
+MIN_SITES = 5
 # How far back to walk looking for days that have data. YouTube Likes land on
 # roughly half of all days, so a 7-day sample needs more than 7 days of runway.
 MAX_LOOKBACK = 45
@@ -265,17 +270,18 @@ def _ledger_totals(rows: list) -> dict:
 
 # ---- one day's shared input -------------------------------------------------
 
-def gather_chrome(day, logger) -> dict | None:
+def gather_chrome(day, logger, min_sites: int = MIN_SITES) -> dict | None:
     """One Chrome gather and one web fetch, to be shared by every arm.
 
-    None when the day has nothing to compare. The fetch happens here, outside
-    any arm, because the fetcher is not the variable under test — the fetcher
-    bake-off already settled it.
+    None when the day has too little browsing to tell two models apart. The
+    fetch happens here, outside any arm, because the fetcher is not the
+    variable under test — the fetcher bake-off already settled it.
     """
     sites = chrome.gather(day, logger)
     chrome_sites = compact_sites(sites)
-    if not chrome_sites:
-        logger.info(f"{day}: no browsing — nothing to compare, skipping")
+    if len(chrome_sites) < min_sites:
+        logger.info(f"{day}: {len(chrome_sites)} sites, under the {min_sites} "
+                    "needed to tell two drafts apart — skipping")
         return None
 
     pages = []
@@ -338,7 +344,7 @@ def draft_chrome(day, shared: dict, arm: str, logger) -> tuple[str, str, str, di
             "notes_chars": len(notes_block),
             "pages_summarized": len(summaries),
             "pages_offered": len(shared["pages"]),
-            "usable": has_substantive_content(text)}
+            "wrote_a_page": has_substantive_content(text)}
     return page, text, str(shared["chrome_sites"]) + notes_block, meta
 
 
@@ -360,7 +366,8 @@ def draft_youtube(day, shared: dict, arm: str, logger) -> tuple[str, str, str, d
     else:
         page = f"## YouTube Learnings: {day:%B %-d, %Y}\n\n{videos_section(videos)}\n"
 
-    meta = {"draft_seconds": draft_seconds, "videos": len(videos), "usable": usable}
+    meta = {"draft_seconds": draft_seconds, "videos": len(videos),
+            "wrote_a_page": usable}
     return page, text, prompt, meta
 
 
@@ -433,7 +440,7 @@ def run_day(task: str, day, logger) -> dict:
             f"{a['specific_pct']}% specific, {a['repeat_pct']}% repeated, "
             f"{a['draft_seconds']}s, {a['usage']['prompt_tokens']} prompt tokens, "
             f"cost {a['usage']['cost_usd']}"
-            + ("" if a["usable"] else " [UNUSABLE DRAFT]")
+            + ("" if a["wrote_a_page"] else " [NO PAGE]")
             + ("" if a["template_clean"] else " [OFF TEMPLATE]"))
     return row
 

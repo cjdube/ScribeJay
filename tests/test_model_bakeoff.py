@@ -43,7 +43,8 @@ def test_one_gather_and_one_fetch_per_day(out, logger, monkeypatch):
     calls = {"gather": 0, "fetch": 0}
     monkeypatch.setattr(mb.chrome, "gather",
                         lambda day, log: calls.__setitem__("gather", calls["gather"] + 1)
-                        or [{"domain": "docs.example", "visits": 3, "pages": ["/a"]}])
+                        or [{"domain": f"d{n}.example", "visits": 3, "pages": ["/a"]}
+                            for n in range(mb.MIN_SITES)])
     monkeypatch.setattr(mb, "compact_sites", lambda sites: sites)
     monkeypatch.setattr(mb.chrome, "web_fetch_enabled", lambda *a, **k: True)
     monkeypatch.setattr(mb, "candidate_urls", lambda sites, limit: [{"url": "https://x/a"}])
@@ -67,7 +68,8 @@ def test_one_gather_and_one_fetch_per_day(out, logger, monkeypatch):
 
 def test_both_arms_get_the_identical_page_list(out, logger, monkeypatch):
     seen = []
-    monkeypatch.setattr(mb.chrome, "gather", lambda day, log: [{"domain": "d"}])
+    monkeypatch.setattr(mb.chrome, "gather",
+                        lambda day, log: [{"domain": f"d{n}"} for n in range(mb.MIN_SITES)])
     monkeypatch.setattr(mb, "compact_sites", lambda sites: sites)
     monkeypatch.setattr(mb.chrome, "web_fetch_enabled", lambda *a, **k: True)
     monkeypatch.setattr(mb, "candidate_urls", lambda sites, limit: [{"url": "https://x/a"}])
@@ -174,7 +176,7 @@ def test_a_failing_arm_is_recorded_and_the_other_still_runs(out, logger, monkeyp
     monkeypatch.setattr(mb, "complete_text", flaky)
     row = mb.run_day("daily_youtube_learnings", DAY, logger)
     assert "429" in row["arms"]["gemini"]["failed"]
-    assert row["arms"]["ollama"]["usable"]
+    assert row["arms"]["ollama"]["wrote_a_page"]
     assert row["arms"]["ollama"]["bullets"] == 1  # the synthesis bullet, alone
 
 
@@ -182,6 +184,17 @@ def test_a_day_with_no_data_is_skipped_not_counted(out, logger, monkeypatch):
     monkeypatch.setattr(mb.youtube, "gather", lambda day, log: [])
     assert mb.run_day("daily_youtube_learnings", DAY, logger) == {}
     assert not out.exists() or not list(out.glob("*.md"))
+
+
+def test_a_day_too_quiet_to_compare_is_skipped(out, logger, monkeypatch):
+    """Any model writes one bullet from two visits. Counting such a day as a
+    comparison is how a bake-off reports a tie it never tested — the first run
+    of this harness spent four of its seven chrome days that way."""
+    monkeypatch.setattr(mb.chrome, "gather",
+                        lambda day, log: [{"domain": "a"}, {"domain": "b"}])
+    monkeypatch.setattr(mb, "compact_sites", lambda sites: sites)
+    assert mb.gather_chrome(DAY, logger) is None
+    assert mb.gather_chrome(DAY, logger, min_sites=2) is not None
 
 
 def test_run_keeps_walking_back_until_it_has_enough_days(out, logger, monkeypatch):
