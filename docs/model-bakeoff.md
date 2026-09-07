@@ -269,19 +269,20 @@ show what the fallback output looks like, on both tasks, on fourteen real days.
 - *Move both tasks to Gemma.* Rejected: it pays a 7–0 quality loss on Chrome to
   save $1.06 a year.
 
-**What the fallback has to do**, when it is built:
+**The fallback was built off the back of this**, and is described in
+[docs/llm-backend.md](llm-backend.md):
 
-- Live at the `core/model.py` choke point, so all eight tasks inherit it.
-- Trigger on the API failing, not on a specific status code — the 429 was this
+- It lives at the `core/model.py` choke point, so all eight tasks inherit it.
+- It triggers on the call failing, not on a status code — the 429 was this
   outage; a 500 or a timeout costs the same morning.
-- Log WARNING with the reason and the backend it switched to. A silent fallback
-  is a task that quietly got worse, and AGENTS.md says degrading is only safe
-  if it is logged.
-- Record the fallback backend in `logs/usage.jsonl`, so the ledger keeps saying
-  which model actually wrote the page.
-- Never fall back for a task the user pointed at a cloud model *for privacy
-  reasons in reverse* — falling back is always toward local, never outward, so
-  this direction is safe by construction.
+- It logs WARNING with the reason and the backend it switched to. A silent
+  fallback is a task that quietly got worse, and AGENTS.md says degrading is
+  only safe if it is logged.
+- It writes both calls to `logs/usage.jsonl` — the failed cloud one and the
+  local one — so the ledger keeps saying which model actually wrote the page.
+- It only ever falls back *toward* local, never outward, so no task can ship
+  its gathered input to a provider the user never selected. That direction is
+  safe by construction, which is why there is no setting for it.
 
 ## 9. Still open
 

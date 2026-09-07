@@ -612,3 +612,107 @@ def test_llm_chat_records_a_failed_call_then_re_raises(monkeypatch):
     kwargs = rows[0][1]
     assert kwargs["ok"] is False
     assert kwargs["error"] == "OllamaUnavailable: Ollama looks down"
+
+
+# --------------------------------------------------------------------------- #
+# cloud -> local fallback
+#
+# The 3-6 September 2026 outage: an empty Gemini prepaid balance returned 429
+# for four mornings and both learnings tasks wrote nothing. A local draft is a
+# measurably worse page (docs/model-bakeoff.md) and a far better one than none.
+# --------------------------------------------------------------------------- #
+
+def _cloud_that_fails(monkeypatch, exc=None):
+    """Make the Gemini backend raise, and the local one answer."""
+    def boom(*a, **kw):
+        raise exc or RuntimeError("429 RESOURCE_EXHAUSTED: credits are depleted")
+
+    seen = {}
+
+    def local(messages, **kwargs):
+        seen.update(kwargs)
+        seen["messages"] = messages
+        return {"content": "local draft"}
+
+    monkeypatch.setattr(model, "_gemini_chat", boom)
+    monkeypatch.setattr(model, "_ollama_chat", local)
+    return seen
+
+
+def test_a_failing_cloud_backend_falls_back_to_the_local_model(monkeypatch):
+    _cloud_that_fails(monkeypatch)
+    message = model._llm_chat([{"role": "user", "content": "hey"}], backend="gemini")
+    assert message["content"] == "local draft"
+
+
+def test_the_fallback_names_both_backends_and_the_reason(monkeypatch, caplog):
+    _cloud_that_fails(monkeypatch)
+    logger = logging.getLogger("daily_chrome_learnings")
+    with caplog.at_level(logging.WARNING):
+        model._llm_chat([{"role": "user", "content": "hey"}],
+                        backend="gemini", logger=logger)
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings, "a silent fallback is a task that quietly got worse"
+    text = warnings[0].getMessage()
+    assert "gemini" in text and "ollama" in text
+    assert "RESOURCE_EXHAUSTED" in text
+
+
+def test_the_ledger_keeps_both_the_failed_call_and_the_local_one(monkeypatch):
+    rows = []
+    monkeypatch.setattr(model.usage_ledger, "record",
+                        lambda *a, **kw: rows.append((a, kw)))
+    _cloud_that_fails(monkeypatch)
+
+    model._llm_chat([{"role": "user", "content": "hey"}], backend="gemini")
+
+    assert [a[1] for a, _ in rows] == ["gemini", "ollama"]
+    assert rows[0][1]["ok"] is False
+    assert rows[1][1].get("ok") is not False
+
+
+def test_the_fallback_does_not_ask_ollama_for_the_cloud_model(monkeypatch):
+    """`model` and `timeout` named the cloud provider's model and its budget.
+    Neither means anything to Ollama, which has its own configured pair."""
+    seen = _cloud_that_fails(monkeypatch)
+    model._llm_chat([{"role": "user", "content": "hey"}], backend="gemini",
+                    model="gemini-3.7-flash", timeout=20.0)
+    assert seen.get("model") is None
+    assert seen.get("timeout") is None
+
+
+def test_a_failing_local_model_has_nowhere_to_fall_back_to(monkeypatch):
+    """Falling back outward would ship the day's gathered input to a provider
+    the user never selected."""
+    calls = []
+
+    def boom(*a, **kw):
+        calls.append("ollama")
+        raise model.OllamaUnavailable("Ollama looks down")
+
+    monkeypatch.setattr(model, "_ollama_chat", boom)
+    monkeypatch.setattr(model, "_gemini_chat",
+                        lambda *a, **kw: pytest.fail("fell back outward"))
+
+    with pytest.raises(model.OllamaUnavailable):
+        model._llm_chat([{"role": "user", "content": "hey"}], backend="ollama")
+    assert calls == ["ollama"], "the local model was retried"
+
+
+def test_an_unknown_backend_name_raises_instead_of_drafting_locally(monkeypatch):
+    """A typo in the config is not an outage. Drafting locally would hide it
+    for as long as nobody compared the pages."""
+    monkeypatch.setattr(model, "_ollama_chat",
+                        lambda *a, **kw: pytest.fail("a config typo drafted locally"))
+    with pytest.raises(ValueError, match="unknown SCRIBEJAY_LLM_BACKEND"):
+        model._llm_chat([{"role": "user", "content": "hey"}], backend="gemeni")
+
+
+def test_the_local_draft_still_gets_the_think_markup_stripped(monkeypatch):
+    """The fallback goes through the same seam, not around it."""
+    monkeypatch.setattr(model, "_gemini_chat",
+                        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("down")))
+    monkeypatch.setattr(model, "_ollama_chat",
+                        lambda messages, **kw: {"content": "<think>hm</think>answer"})
+    message = model._llm_chat([{"role": "user", "content": "hey"}], backend="gemini")
+    assert message["content"] == "answer"

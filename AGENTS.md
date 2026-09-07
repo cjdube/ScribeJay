@@ -28,7 +28,11 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   per chat, `claude_time_blocks` one per block, and `daily_chrome_learnings`
   one draft plus one per fetched page when web fetch is on
   ([docs/web-fetch.md](docs/web-fetch.md)) and one otherwise; `strava_download`
-  and `daily_correspondence` make none at all. `core/config.py` is the
+  and `daily_correspondence` make none at all. A failing cloud backend is
+  retried once against local Ollama at that choke point — never the other
+  direction ([docs/llm-backend.md](docs/llm-backend.md)) — so a call can be
+  answered by a different model than the one the run log resolved.
+  `core/config.py` is the
   settings seam, resolving env var -> `~/.scribejay/config.json` -> the
   default in `core/schema.py`, with secrets in the macOS Keychain via
   `core/secrets.py` ([docs/configuration.md](docs/configuration.md)).

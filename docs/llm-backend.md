@@ -62,6 +62,40 @@ Verify by reading the task's log — the `backend:` line names the resolved
 backend and its source, and a `gemini_chat model=…` or `ollama_chat model=…`
 line confirms which one actually ran.
 
+## A failing cloud backend falls back to the local model
+
+If a cloud call fails, `core/model.py` retries the same prompt against local
+Ollama rather than letting the task write nothing. Every task inherits this —
+it lives at the one model choke point.
+
+On 3–6 September 2026 an empty Gemini prepaid balance returned
+`429 RESOURCE_EXHAUSTED` for four mornings, and both learnings tasks produced
+no page at all. A local draft is a measurably worse page than a Gemini one
+([model-bakeoff.md](model-bakeoff.md) put it 11–1–2 to Gemini across fourteen
+blind-read days) and a far better page than none.
+
+Three deliberate limits:
+
+- **It does not read the status code.** A 429 was that outage; a 500, a DNS
+  failure or a timeout costs the same morning. Any failure falls back.
+- **It only falls back toward local.** Ollama failing raises, because falling
+  back outward would send the day's gathered input to a provider you never
+  selected. The direction is safe by construction, so there is no setting.
+- **A bad backend name still raises.** That is a typo in the config, not an
+  outage, and drafting locally would hide it.
+
+You will see it in two places. The task log gets a WARNING naming the failure
+and the backend it switched to:
+
+    WARNING gemini failed (HTTPError: 429 RESOURCE_EXHAUSTED …); falling back to ollama
+
+and `logs/usage.jsonl` gets **two** rows — the failed cloud call and the local
+one — so the ledger keeps saying which model actually wrote the page
+([usage-ledger.md](usage-ledger.md)).
+
+Note that `warm_model` is a no-op for a cloud backend, so a fallback draft runs
+against a cold model and is slower than a scheduled local run.
+
 ## Gemini config
 
 - Key: `GEMINI_API_KEY` or `GOOGLE_API_KEY` (the SDK checks both).
@@ -141,3 +175,6 @@ OpenRouter does not pass through.
   model-call choke point
 - [model-constraints.md](model-constraints.md) — `think=False`, budget, and
   the other small-model rules that apply regardless of backend
+- [model-bakeoff.md](model-bakeoff.md) — what the local model actually costs
+  the two learnings pages, and why the fallback is a fallback rather than a
+  move

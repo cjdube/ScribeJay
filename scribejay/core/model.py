@@ -313,24 +313,26 @@ def warm_model(
         return False
 
 
-def _llm_chat(
+LOCAL_BACKEND = "ollama"
+BACKENDS = (LOCAL_BACKEND, "gemini", "google", "openrouter")
+
+
+def _one_call(
+    b: str,
     messages: list[dict],
-    backend: Optional[str] = None,
     model: str = None,
     host: str = None,
     timeout: float = None,
     logger: Optional[logging.Logger] = None,
     think: Optional[bool] = None,
 ) -> dict:
-    """Dispatch a single-turn chat completion to the selected backend,
-    returning the same canonical `message` dict shape regardless of
-    provider."""
-    b = _resolve_backend(backend)
+    """One attempt against one backend: dispatch, record it in the ledger, and
+    return the canonical `message` dict shape regardless of provider."""
     # setup_logger names each logger after its task, so this is the task name.
     task = getattr(logger, "name", None)
     t0 = time.monotonic()
     try:
-        if b == "ollama":
+        if b == LOCAL_BACKEND:
             message = _ollama_chat(messages, model=model, host=host, timeout=timeout,
                                    logger=logger, think=think)
         elif b in ("gemini", "google"):
@@ -372,6 +374,63 @@ def _llm_chat(
     content = _strip_think_markup(message.get("content") or "")
     message["content"] = _latex_to_unicode(content)
     return message
+
+
+def _llm_chat(
+    messages: list[dict],
+    backend: Optional[str] = None,
+    model: str = None,
+    host: str = None,
+    timeout: float = None,
+    logger: Optional[logging.Logger] = None,
+    think: Optional[bool] = None,
+) -> dict:
+    """The selected backend, falling back to the local model if it fails.
+
+    A cloud backend is a dependency outside this Mac. On 3-6 September 2026 an
+    empty Gemini prepaid balance returned `429 RESOURCE_EXHAUSTED` for four
+    mornings and both learnings tasks wrote nothing at all. A local draft is a
+    worse page than a Gemini one (measured: [docs/model-bakeoff.md]) and a far
+    better page than no page.
+
+    Three things this deliberately does NOT do:
+
+    - **It does not read the status code.** A 429 was that outage; a 500, a DNS
+      failure or a timeout costs the same morning. Any failure of the call
+      falls back.
+    - **It only ever falls back toward local.** Ollama failing raises, because
+      the alternative would be shipping a task's gathered input to a cloud
+      provider that the user never selected. The direction is safe by
+      construction, so there is no setting to get wrong.
+    - **It does not fall back on a bad backend name.** That is a typo in the
+      config, not an outage, and quietly drafting locally would hide it for as
+      long as nobody compared the pages.
+
+    Two ledger rows come out of a fallback — the failed cloud call and the
+    local one — so `logs/usage.jsonl` keeps saying which model actually wrote
+    the page.
+    """
+    b = _resolve_backend(backend)
+    if b not in BACKENDS:
+        raise ValueError(
+            f"unknown SCRIBEJAY_LLM_BACKEND {b!r} "
+            f"(expected 'ollama', 'gemini' or 'openrouter')")
+    try:
+        return _one_call(b, messages, model=model, host=host, timeout=timeout,
+                         logger=logger, think=think)
+    except Exception as e:
+        if b == LOCAL_BACKEND:
+            raise
+        # AGENTS.md: degrading is only safe if it is logged. A silent fallback
+        # is a task that quietly got worse every morning.
+        if logger:
+            logger.warning(
+                "%s failed (%s: %s); falling back to %s", b, e.__class__.__name__,
+                e, LOCAL_BACKEND)
+        # `model` and `timeout` named the cloud provider's model and its
+        # budget, so neither travels: Ollama uses its own configured pair.
+        return _one_call(LOCAL_BACKEND, messages, host=host, logger=logger,
+                         think=think)
 
 
 def complete_text(
