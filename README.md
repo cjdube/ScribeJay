@@ -135,17 +135,19 @@ scribejay run daily_commits --date 2026-08-29
 ```
 
 Arguments after the task name go to the task itself. Most jobs take none —
-they do yesterday, which is the only day they are for. The four that do:
+they do yesterday, which is the only day they are for. The six that do:
 
 | Job | Flags |
 |---|---|
 | `ai_chat_learnings` | `--date`, `--backfill N` |
 | `claude_time_blocks` | `--date`, `--backfill N`, `--dry-run` |
+| `daily_chrome_learnings` | `--date`, `--backfill N`, `--dry-run`, `--web-fetch` |
 | `daily_commits` | `--date`, `--backfill N` |
 | `daily_correspondence` | `--date`, `--backfill N` |
+| `daily_youtube_learnings` | `--date` |
 
-`--dry-run` exists only on `claude_time_blocks`. Ask any task for its own list
-with `python -m scribejay.<task> --help`.
+`--dry-run` exists only on `claude_time_blocks` and `daily_chrome_learnings`.
+Ask any task for its own list with `python -m scribejay.<task> --help`.
 
 ## Scheduling
 

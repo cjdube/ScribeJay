@@ -3,6 +3,8 @@ the deterministic video list, and persists a Daily-YouTube entry; a day with no
 Liked videos writes nothing. Collaborators are monkeypatched; no model, YouTube,
 vault, or Gmail access."""
 
+import sys
+
 import pytest
 
 from _helpers import is_run_success
@@ -12,6 +14,7 @@ from scribejay import daily_youtube_learnings as yt
 @pytest.fixture
 def stubbed_run(monkeypatch):
     seen = {"persists": []}
+    monkeypatch.setattr(sys, "argv", ["daily_youtube_learnings"])  # argparse must not see pytest's argv
     monkeypatch.setattr(yt, "scribejay_backend", lambda key: None)
     monkeypatch.setattr(yt, "warm_model", lambda **k: True)
     monkeypatch.setattr(yt, "complete_text",
@@ -75,3 +78,30 @@ def test_fetch_failure_is_a_failed_run(stubbed_run, monkeypatch):
     monkeypatch.setattr(yt, "notify_failure", lambda name, detail, logger=None: calls.append(str(detail)))
     assert yt.main() == 1
     assert any("api boom" in c for c in calls)
+
+
+def _window_seen(monkeypatch, argv):
+    """Run main() with `argv` and return the (start, end) fetch_liked_videos got."""
+    seen = {}
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(yt, "fetch_liked_videos",
+                        lambda start, end: seen.update(start=start, end=end) or {"videos": []})
+    assert yt.main() == 0
+    return seen
+
+
+def test_date_fetches_that_day_not_yesterday(stubbed_run, monkeypatch):
+    """Credits lapsing loses a day's Likes, and the Likes playlist keeps them —
+    so the day has to be nameable. Without this the only reachable day is
+    whatever yesterday happens to be when you run it."""
+    seen = _window_seen(monkeypatch, ["daily_youtube_learnings", "--date", "2026-09-03"])
+    assert (seen["start"], seen["end"]) == ("2026-09-03", "2026-09-03")
+
+
+def test_no_date_still_covers_yesterday(stubbed_run, monkeypatch):
+    """The launchd job passes no flags. --date must not move the default day."""
+    from scribejay.core.dates import prior_day
+
+    _, _, yesterday = prior_day()
+    seen = _window_seen(monkeypatch, ["daily_youtube_learnings"])
+    assert seen["start"] == yesterday.strftime("%Y-%m-%d")

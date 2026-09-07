@@ -9,15 +9,19 @@ appended in Python. A day with no Likes writes nothing (keeps the vault clean).
 
 Usage:
     python -m scribejay.daily_youtube_learnings
+    python -m scribejay.daily_youtube_learnings --date 2026-09-03
 """
 
+import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scribejay.core import config, registry
-from scribejay.core.dates import prior_day
+from scribejay.core.dates import local_timezone, prior_day, resolve_date
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
 from scribejay.journal import videos_section
@@ -54,7 +58,21 @@ def _looks_usable(text: str) -> bool:
     return bool(text) and "- " in text
 
 
+def _window(date_str: str | None):
+    """(start, end, day) for --date, or yesterday when it is not given."""
+    if not date_str:
+        return prior_day()
+    tz = ZoneInfo(local_timezone())
+    day = datetime.fromisoformat(resolve_date(date_str)).date()
+    start = datetime.combine(day, datetime.min.time()).replace(tzinfo=tz)
+    return start, start.replace(hour=23, minute=59, second=59), day
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--date", default=None, help="write a single day YYYY-MM-DD")
+    args = parser.parse_args()
+
     logger = setup_logger("daily_youtube_learnings")
     logger.info("Starting daily youtube learnings run")
 
@@ -62,7 +80,7 @@ def main() -> int:
         return 0
 
     try:
-        start, end, day = prior_day()
+        start, end, day = _window(args.date)
         logger.info(f"Day: {day}")
 
         youtube_result = fetch_liked_videos(start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
