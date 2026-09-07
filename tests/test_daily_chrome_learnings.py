@@ -3,6 +3,7 @@ Daily-Chrome entry. All collaborators are monkeypatched; nothing touches the
 model, Chrome, the vault, or Gmail."""
 
 import sys
+from datetime import date
 
 import pytest
 
@@ -423,3 +424,33 @@ def test_an_all_none_draft_still_writes_nothing_even_with_pages_read(fetchable, 
     monkeypatch.setattr(dc, "complete_text", _model)
     assert dc.main() == 0
     assert fetchable["persists"] == []
+
+
+def test_the_history_log_line_carries_no_urls(monkeypatch):
+    """A visited url's query string holds OAuth codes, booking references and
+    session tokens. gather() logs the day's counts and bare domains so the
+    operator can still see the fetch worked, but logs/ is plain text and a
+    sibling tool reads that folder — the pages themselves must never land in it."""
+    secret = ("https://www.aa.com/manage-reservation?recordLocator=NWJXNB"
+              "&code=4%2F0ATsMZqSECRET")
+    monkeypatch.setattr(dc, "fetch_chrome_history", lambda *a, **k: {
+        "range": "2026-09-02 to 2026-09-02",
+        "total_meaningful_visits": 7,
+        "sites_shown": 1,
+        "sites": [{"domain": "www.aa.com", "title": "trip", "url": secret, "visits": 7,
+                   "pages": [{"path": "/manage-reservation", "url": secret, "visits": 7}]}],
+    })
+    logger = _RecordingLogger()
+
+    sites = dc.gather(date(2026, 9, 2), logger)
+
+    # The caller still gets the urls — only the log is trimmed.
+    assert sites[0]["url"] == secret
+    logged = "\n".join(logger.infos)
+    assert "NWJXNB" not in logged
+    assert "SECRET" not in logged
+    assert "recordLocator" not in logged
+    assert "/manage-reservation" not in logged
+    # ...and it still says enough to tell a working fetch from a broken one.
+    assert "7 visits across 1 sites" in logged
+    assert "www.aa.com" in logged

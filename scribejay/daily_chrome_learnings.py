@@ -280,7 +280,16 @@ def gather(day, logger) -> list:
     result = fetch_chrome_history(start.strftime("%Y-%m-%d"), start.strftime("%Y-%m-%d"),
                                   pages_per_domain=MAX_PAGES_PER_SITE,
                                   max_sites=None)  # summarizes the whole day; no context window to protect
-    logger.info(f"fetch_chrome_history -> {result}")
+    # Counts and bare domains only — never the pages. A visited url carries its
+    # query string, and that is where the OAuth codes, booking references and
+    # session tokens live; logs/ is plain text and other tools read it.
+    if "error" in result:
+        logger.info(f"fetch_chrome_history -> {result['error']}")
+    else:
+        logger.info(f"fetch_chrome_history -> {result.get('range')}: "
+                    f"{result.get('total_meaningful_visits')} visits across "
+                    f"{result.get('sites_shown')} sites: "
+                    + ", ".join(s["domain"] for s in result.get("sites", [])))
     return result.get("sites", [])
 
 
