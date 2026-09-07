@@ -140,10 +140,6 @@ def test_the_table_covers_every_scheduled_module():
         if re.search(r"^def main\(\) -> int:", text, re.M) and "setup_logger" in text:
             entrypoints.add(path.stem)
     entrypoints -= {"migrate"}   # a one-shot command, not a scheduled job
-    # A hand-run measurement tool, deliberately not a job: it is deleted along
-    # with this line once docs/model-bakeoff.md is written, the same way
-    # scribejay/bakeoff.py was after docs/web-fetch.md (commit a41805a).
-    entrypoints -= {"model_bakeoff"}
     assert entrypoints == set(registry.KEYS)
 
 

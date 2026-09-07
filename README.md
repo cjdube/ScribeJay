@@ -207,6 +207,9 @@ One page per job, for when a page reads wrong and you want to know why:
   URL implied
 - [docs/daily-correspondence.md](docs/daily-correspondence.md) — who yesterday
   was spent talking to, and which threads are still waiting on him
+- [docs/model-bakeoff.md](docs/model-bakeoff.md) — Gemini against the local
+  Gemma model on fourteen real days, and why the two learnings jobs stay on
+  Gemini with a fallback rather than moving
 
 ## Security model
 
