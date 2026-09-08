@@ -32,6 +32,7 @@ concurrency buys nothing, and the idle timeout becomes a loop condition instead
 of a background timer that has to be cancelled correctly on every exit path.
 """
 
+import html
 import http.server
 import secrets as pysecrets
 import sys
@@ -158,7 +159,13 @@ def make_handler(session: Session):
                 return True
             # The reason goes to the client, never to stdout: a refusal is not
             # interesting enough to risk printing a header a caller chose.
-            self._send(status, f"<h1>{status}</h1><p>{reason}</p>")
+            #
+            # Escaped, because the reason quotes the Host or Origin header back
+            # — text the caller chose — into an HTML page. Escaped rather than
+            # neutralized the way safe_label does it: nobody reads a 403 page
+            # every morning, so a literal "&lt;" costs nothing here, and showing
+            # the header exactly as sent is the whole point of naming it.
+            self._send(status, f"<h1>{status}</h1><p>{html.escape(reason)}</p>")
             return False
 
         def do_GET(self):

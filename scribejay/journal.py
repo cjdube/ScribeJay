@@ -6,21 +6,38 @@ in scribejay/activity.py and scribejay/sinks/vault.py instead. What is here is
 rendering and quality-checking of a journal entry.
 """
 
+from scribejay.core.text import safe_label
 from scribejay.core.urls import safe_url
+
+# A page summary is ScribeJay's own words, but they are written *about* text a
+# stranger controls, so it goes through safe_label like everything else here.
+# Its own budget, though: safe_label's 120-character default is sized for a
+# subject line, and the summarizer is allowed 120 WORDS. Truncating to the
+# default would silently amputate the one section that exists to keep a page's
+# detail (see pages_read_section).
+MAX_NOTE_CHARS = 1000
 
 
 def videos_section(videos: list) -> str:
     """Deterministic Markdown section listing every video Liked, with a link to
     each. Built in Python (not asked of the model) so the titles and URLs are
-    exact and every link is scheme-validated. Titles keep their raw text; only a
-    bad-scheme URL is dropped (the title then renders unlinked)."""
+    exact and every link is scheme-validated.
+
+    A title and a channel name are chosen by whoever published the video, so
+    both go through `safe_label` before they reach the page: a title of
+    `Watch me](http://evil.example) [` would otherwise close this line's own
+    link early and render a live link to somewhere the user never visited.
+    `safe_url` guards the destination, `safe_label` guards the words around it.
+    """
     lines = ["### Videos Liked"]
     if not videos:
         lines.append("- **None:** [No videos Liked this day]")
         return "\n".join(lines)
     for v in videos:
-        title = (v.get("title") or "Untitled").strip()
-        channel = (v.get("channel") or "").strip()
+        # After safe_label, not before: a title made only of Markdown syntax is
+        # emptied by it and still needs the placeholder.
+        title = safe_label(v.get("title")) or "Untitled"
+        channel = safe_label(v.get("channel"))
         url = safe_url(v.get("url") or "")
         label = f"[{title}]({url})" if url else title
         lines.append(f"- {label}{f' — {channel}' if channel else ''}")
@@ -39,17 +56,19 @@ def closed_tasks_section(items: list) -> str:
     code Space mostly restates a commit two sections above it; a Vibe Foundry one is the
     only record of that day's work anywhere.
 
-    Titles are collapsed to one line — a Task name should not contain a newline,
-    but one pasted in would silently break the list into fragments, which is the
-    same bug a multi-paragraph description caused in daily_synthesis."""
+    Every field goes through `safe_label`, which folds the newline a pasted Task
+    name would otherwise break the list with AND neutralizes the Markdown and
+    HTML that makes text *do* something: a Space in a shared workspace can be
+    named by somebody else, and AGENTS.md names a ClickUp Task name as untrusted
+    text outright."""
     lines = ["### Closed in ClickUp"]
     if not items:
         lines.append("- **None:** [No ClickUp Tasks closed this day]")
         return "\n".join(lines)
     for item in sorted(items, key=lambda i: (i.get("space", ""), i.get("title", ""))):
-        title = " ".join((item.get("title") or "(no title)").split())
-        space = " ".join((item.get("space") or "").split())
-        status = " ".join((item.get("status") or "").split())
+        title = safe_label(item.get("title")) or "(no title)"
+        space = safe_label(item.get("space"))
+        status = safe_label(item.get("status"))
         lines.append(f"- **{space}:** {title}" + (f" *({status})*" if status else ""))
     return "\n".join(lines)
 
@@ -68,8 +87,16 @@ def pages_read_section(pages: list) -> str:
     makes the bullets specific, and it is also what loses the detail. This
     section is where the detail survives.
 
-    The summary is collapsed to one line: it should never contain a newline, but
-    one that did would silently break the list into fragments — the same bug
+    The title is the untrusted one. It is read out of the remote page's own
+    HTML by `sources/web_fetch.py`, so it is chosen by whoever wrote that page:
+    a title of `Free money](http://evil.example) [` closes this line's link
+    early and leaves a live link to somewhere the user never went, wearing a
+    label the page's author picked. `safe_label` breaks that syntax. The domain
+    and path fall back into the same slot and get the same treatment, and so
+    does the summary — see MAX_NOTE_CHARS for why it keeps its own budget.
+
+    `safe_label` also folds the newline a summary should never contain but that
+    would silently break the list into fragments — the same bug
     closed_tasks_section guards against.
     """
     lines = ["### Pages Read"]
@@ -78,9 +105,9 @@ def pages_read_section(pages: list) -> str:
         return "\n".join(lines)
     for page in pages:
         url = safe_url(page.get("url") or "")
-        title = " ".join((page.get("title") or "").split()) \
-            or f"{page.get('domain', '')}{page.get('path', '')}"
-        note = " ".join((page.get("notes") or "").split())
+        title = safe_label(page.get("title")) \
+            or safe_label(f"{page.get('domain', '')}{page.get('path', '')}")
+        note = safe_label(page.get("notes"), limit=MAX_NOTE_CHARS)
         label = f"[{title}]({url})" if url else title
         lines.append(f"- **{label}** — {note}" if note else f"- **{label}**")
     return "\n".join(lines)

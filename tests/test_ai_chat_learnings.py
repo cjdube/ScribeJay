@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from scribejay.core import config
-from scribejay.core.store import load_json
+from scribejay.core.store import atomic_write_json, load_json
 from scribejay import ai_chat_learnings as ai
 
 
@@ -160,3 +160,41 @@ def test_state_path_keeps_a_legacy_checkout_store_where_it_is(tmp_path):
     legacy.parent.mkdir(parents=True)
     legacy.write_text("{}")
     assert ai._resolve_state_path(legacy) == legacy
+
+
+# ---------------------------------------------------------------------------
+# _prune_processed — the dedup store is pruned on write, by file existence
+#
+# Age is the wrong rule here and the tests say so: the row IS the watermark, so
+# a row dropped for being old re-summarizes a chat whose file is still sitting
+# in the folder. A row is dead only once its file is gone.
+# ---------------------------------------------------------------------------
+
+def test_a_row_is_kept_while_its_file_is_there_and_dropped_once_it_is_gone(
+        stubbed, monkeypatch):
+    folder = ai.gemini_dir()
+    folder.mkdir(parents=True)
+    (folder / "still-here.md").write_text("x")
+    (folder / "new.md").write_text("x")
+    atomic_write_json(ai.STATE_PATH,
+                      {"gemini_processed": {"still-here.md": 1.0, "cleared-out.md": 2.0}})
+
+    monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
+    monkeypatch.setattr(ai, "fetch_gemini_chats",
+                        lambda processed, max_chars:
+                        [{"name": "new.md", "mtime": 3.0, "text": "stuff"}])
+    assert ai.main() == 0
+
+    rows = load_json(ai.STATE_PATH, {})["gemini_processed"]
+    # Kept: its file is still in the folder, so a run tomorrow would still match
+    # on it. Dropped: nothing can ever match "cleared-out.md" again.
+    assert set(rows) == {"still-here.md", "new.md"}
+
+
+def test_a_missing_drop_folder_prunes_nothing(stubbed, monkeypatch):
+    """The feature is idle until someone points the setting at a real folder.
+    Reading "no folder" as "no files" would empty the store on the first run of
+    a machine that has not set one up — and every one of those chats would then
+    be summarized a second time the day the folder appeared."""
+    assert not ai.gemini_dir().exists()
+    assert ai._prune_processed({"chatA.md": 1.0}) == {"chatA.md": 1.0}

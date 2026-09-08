@@ -144,9 +144,10 @@ they do yesterday, which is the only day they are for. The six that do:
 | `daily_chrome_learnings` | `--date`, `--backfill N`, `--dry-run`, `--web-fetch` |
 | `daily_commits` | `--date`, `--backfill N` |
 | `daily_correspondence` | `--date`, `--backfill N` |
-| `daily_youtube_learnings` | `--date` |
+| `daily_youtube_learnings` | `--date`, `--dry-run` |
 
-`--dry-run` exists only on `claude_time_blocks` and `daily_chrome_learnings`.
+`--dry-run` exists only on `claude_time_blocks`, `daily_chrome_learnings`
+and `daily_youtube_learnings`.
 Ask any task for its own list with `python -m scribejay.<task> --help`.
 
 ## Scheduling

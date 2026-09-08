@@ -149,3 +149,21 @@ def test_set_event_color_degrades_on_failure(monkeypatch):
 
     result = cal.set_event_color("evt-1", "4")
     assert "error" in result
+
+
+def test_an_unstubbed_write_cannot_reach_the_real_google_credentials():
+    """The conftest guard, proved through the code it guards.
+
+    log_calendar_event ends in `except Exception: return {"error": str(e)}`, so
+    an ordinary error would come back as a tidy error dict and this test would
+    pass while a real run still opened the user's OAuth token file. The guard
+    raises a BaseException, which that degrade path cannot swallow — so the
+    assertion is that the call RAISES, not that it returns an error."""
+    # `conftest`, not `tests.conftest`: pytest loads the rootdir conftest as a
+    # top-level module, and importing it by package path would build a SECOND
+    # module object whose _GoogleEgress is a different class — pytest.raises
+    # would then miss the very exception the guard raised.
+    from conftest import _GoogleEgress
+
+    with pytest.raises(_GoogleEgress):
+        cal.log_calendar_event("Test", "2026-09-08T09:00:00", "2026-09-08T10:00:00")

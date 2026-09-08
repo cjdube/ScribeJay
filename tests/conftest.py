@@ -25,6 +25,11 @@ suite-wide rather than per-test — a missed convention has to stay harmless:
   {"error": ...} on failure, so a test that reached Gmail would still pass —
   the block below raises a BaseException instead, which that degrade path
   cannot swallow.
+- `core/google.py` builds every Google client, for the calendar reader and
+  both calendar writes as well as Gmail and YouTube. `get_credentials()` is
+  the choke point under all of them: it reads and rewrites the user's real
+  OAuth token file and can open a consent server in their browser. Every
+  caller degrades on `Exception`, so this guard raises a BaseException too.
 - `core/usage_ledger.py` appends a row to logs/usage.jsonl on every model
   call, and drops a .lock sidecar beside it. Redirected below.
 - ClickUp and Gemini are both live network egress the suite must never reach.
@@ -76,6 +81,7 @@ os.environ["SCRIBEJAY_ENV_FILE"] = str(_TEST_CONFIG_DIR / "absent.env")
 
 from scribejay.core import config as _config  # noqa: E402
 from scribejay.core import features as _features  # noqa: E402
+from scribejay.core import google as _google  # noqa: E402
 from scribejay.core import logs as _logs  # noqa: E402
 from scribejay.core import usage_ledger as _usage_ledger  # noqa: E402
 from scribejay.core import secrets as _secrets  # noqa: E402
@@ -188,6 +194,43 @@ def _block_gmail_egress(monkeypatch):
             "a test reached the live Gmail API — stub the caller's fetch "
             "function, or scribejay.sources.gmail._service, in that test.")
     monkeypatch.setattr(_gmail, "_service", _blocked)
+
+
+class _GoogleEgress(BaseException):
+    """Deliberately NOT an Exception, for the same reason _GmailEgress is not.
+    Every caller of build_service() — both calendar writes, the calendar
+    reader, YouTube, Gmail — ends in `except Exception: return {"error": ...}`,
+    so an ordinary error raised here would be caught by the very code it
+    guards: the test would pass having proved nothing."""
+
+
+@pytest.fixture(autouse=True)
+def _block_google_egress(monkeypatch):
+    """Stub the one credential choke point in core/google.py.
+
+    Guarded at `get_credentials` rather than at `build_service`, because every
+    consumer does `from scribejay.core.google import build_service` — a name
+    bound in that module at import, so patching core.google.build_service
+    would miss all of them and a hand-kept list of consumer modules would go
+    stale the day a seventh one appears. build_service() looks `get_credentials`
+    up in core/google.py's own globals on every call, so one patch covers each
+    consumer however it imported.
+
+    What it protects is not only the network: get_credentials() reads, refreshes
+    and rewrites the user's real OAuth token file, and on a miss runs
+    InstalledAppFlow, which opens a browser and binds a local consent server.
+    tests/test_google.py re-patches this per test to exercise the real code, and
+    the calendar/youtube tests stub their own module's build_service."""
+    def _blocked(*a, **k):
+        raise _GoogleEgress(
+            "a test reached the real Google credentials — stub the caller's "
+            "own build_service, or scribejay.core.google.get_credentials, in "
+            "that test.")
+
+    monkeypatch.setattr(_google, "get_credentials", _blocked)
+    # A service cached by an earlier test would be returned before
+    # get_credentials is ever consulted, so the guard would not fire.
+    _google._SERVICES.clear()
 
 
 @pytest.fixture(autouse=True)

@@ -85,6 +85,17 @@ reason for one. See [docs/architecture.md](docs/architecture.md) for the shape.
   `cli/init.py` and `cli/doctor.py` do name individual settings, because
   asking a question and checking a specific thing both require knowing which
   thing. Adding one there is a deliberate edit, not a violation.
+- `launchd/` — the three launchd files that are *not* generated. The eight
+  task agents are written by `scribejay/cli/schedule.py` from
+  `core/registry.py`, so nothing here describes a task. What is committed is
+  the self-heal agent and its two scripts:
+  `local.scribejay.selfheal.plist` runs under Apple-signed `/bin/bash` on
+  purpose — see `scribejay/cli/schedule.py:21-27` — so that it still starts
+  when a brew upgrade has left the python interpreter unexecutable, which is
+  the exact failure it repairs; routing it through the generator would hand it
+  the interpreter it has to be independent of. `install.sh` installs it, and
+  `reload-after-upgrade.sh` is the repair itself. A sibling repo reads this
+  folder by path, so the names are load-bearing.
 - `tests/` — flat pytest suite, one `test_<module>.py` per source module.
 - `config/` — legacy, and gitignored except for `.env.example`. It holds a
   pre-packaging `.env` and `preferences.json` until `migrate.py` folds them

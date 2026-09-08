@@ -585,3 +585,31 @@ def test_the_chrome_test_button_asks_for_yesterday_only(monkeypatch):
     assert seen["start"] == str(day)
     assert seen["end"] == str(day)
     assert "days_ago" not in seen
+
+
+def test_a_refusal_page_cannot_carry_a_header_the_caller_wrote(session):
+    """The 403 body quotes the offending Host or Origin header back to the
+    caller, so the header is attacker-chosen text going into an HTML page.
+
+    The Host guard fires before the token is even read, which is what makes
+    this reachable: any page the user has open can point a hostile name at
+    127.0.0.1 and make this server render whatever it wrote in that header.
+
+    Driven through the real `_guard`, not asserted against the source. The
+    handler class is built per request and never instantiated normally, so the
+    instance is made without __init__ and only the two attributes _guard
+    touches are supplied — no socket is opened and no thread is started, which
+    tests/conftest.py forbids anyway.
+    """
+    handler_cls = settings_server.make_handler(session)
+    handler = handler_cls.__new__(handler_cls)
+    handler.headers = headers(host="<script>alert(1)</script>")
+    sent = []
+    handler._send = lambda status, body: sent.append((status, body))
+
+    assert handler_cls._guard(handler, "GET", {}, {}) is False
+    status, body = sent[0]
+    assert status == 403
+    # The header is still shown — that is the point of naming it — but as text.
+    assert "<script>" not in body
+    assert "&lt;script&gt;" in body

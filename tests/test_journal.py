@@ -172,3 +172,96 @@ def test_a_newline_in_a_note_cannot_break_the_list():
     section = lc.pages_read_section([_page(notes="one\ntwo\nthree")])
     assert len([ln for ln in section.splitlines() if ln.startswith("- ")]) == 1
     assert "one two three" in section
+
+
+# --------------------------------------------------------------------------- #
+# safe_label — every stranger-chosen word that reaches the page
+#
+# AGENTS.md: "Anything a stranger chose goes through safe_label before it
+# reaches a file." Each of these three sections renders text somebody outside
+# this machine picked — a channel's video title, a shared ClickUp Space, and a
+# remote page's own <title> read straight out of its HTML. Without the guard a
+# title of "x](http://evil.example) [" closes the line's own link early and
+# leaves a live link to somewhere the user never visited, wearing a label its
+# author chose.
+#
+# What these assert is that no LINK is forged, not that the attacker's host
+# disappears. safe_label breaks the syntax and leaves the words: the host is
+# meant to survive as plain, unlinked text, which is the whole point of
+# neutralizing rather than escaping (see core/text.py). So the test is the
+# count of "](" — one when the section built a link of its own, none when it
+# did not.
+# --------------------------------------------------------------------------- #
+
+_SPOOF = "Free money](http://evil.example) ["
+
+
+def test_a_video_title_cannot_forge_a_second_link():
+    section = lc.videos_section([
+        {"title": _SPOOF, "channel": "X", "url": "https://youtu.be/real"},
+    ])
+    # One link, and it is the one this function built.
+    assert section.count("](") == 1
+    assert "](https://youtu.be/real)" in section
+
+
+def test_a_video_channel_cannot_inject_markdown():
+    section = lc.videos_section([
+        {"title": "Fine", "channel": "<img src=x onerror=alert(1)>",
+         "url": "https://youtu.be/real"},
+    ])
+    assert "<" not in section and ">" not in section
+
+
+def test_a_video_title_made_only_of_syntax_still_gets_a_placeholder():
+    """safe_label empties it, and a bare "[](url)" would render as a live link
+    with no visible words at all."""
+    section = lc.videos_section([{"title": "[]`|", "channel": "",
+                                  "url": "https://youtu.be/real"}])
+    assert "[Untitled](https://youtu.be/real)" in section
+
+
+def test_a_page_title_cannot_forge_a_second_link():
+    section = lc.pages_read_section([_page(title=_SPOOF)])
+    assert section.count("](") == 1
+    assert "](https://e.com/blog/post)" in section
+
+
+def test_a_page_summary_cannot_inject_markdown():
+    section = lc.pages_read_section([_page(notes="see `rm -rf /` and <b>this</b>")])
+    assert "`" not in section
+    assert "<" not in section and ">" not in section
+
+
+def test_a_long_page_summary_is_kept_whole():
+    """The note gets its own budget. safe_label's 120-character default is sized
+    for a subject line; the summarizer is allowed 120 WORDS, and this section is
+    the only place that detail survives."""
+    note = "word " * 150
+    section = lc.pages_read_section([_page(notes=note)])
+    assert "…" not in section
+    assert len(section) > 700
+
+
+def test_a_page_falling_back_to_its_path_is_still_neutralized():
+    section = lc.pages_read_section([
+        _page(title="", domain="e.com", path="/a](http://evil.example)"),
+    ])
+    assert section.count("](") == 1
+    assert "](https://e.com/blog/post)" in section
+
+
+def test_a_clickup_task_name_cannot_inject_html():
+    section = lc.closed_tasks_section([
+        {"space": "S", "title": "<img src=x onerror=alert(1)>", "status": "done"},
+    ])
+    assert "<" not in section and ">" not in section
+
+
+def test_a_clickup_space_cannot_inject_markdown():
+    """A Space in a shared workspace can be named by somebody else."""
+    section = lc.closed_tasks_section([
+        {"space": "[x](http://evil.example)", "title": "T", "status": ""},
+    ])
+    # This section renders no links at all, so any "](" would be forged.
+    assert "](" not in section

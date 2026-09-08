@@ -37,6 +37,7 @@ from scribejay.sources.transcripts import (
     fetch_claude_sessions,
     fetch_codex_sessions,
     fetch_gemini_chats,
+    gemini_dir,
 )
 
 # Gemini dedup: the watermark that stops a re-run re-summarizing a drop file.
@@ -109,6 +110,32 @@ def _summarize(text: str, source: str, logger, backend) -> str:
     return summary
 
 
+def _prune_processed(processed: dict) -> dict:
+    """Drop the rows whose file has left the drop folder.
+
+    AGENTS.md asks every store to prune on write, and this one only ever grew:
+    one row per Gemini export, forever, on a store polled every day.
+
+    Age is the wrong rule for it, though. The row IS the watermark. A chat
+    dropped a year ago and never cleared out is still sitting in the folder,
+    and dropping its row would re-summarize that chat into tomorrow's page —
+    the exact duplicate the store exists to prevent. What makes a row dead is
+    the file being gone: once it is, no later run can ever match on that name
+    again, so the row can never do anything but take up space.
+
+    A missing or unreadable folder prunes nothing. The feature stays idle until
+    someone points the setting at a real directory, and reading "no folder" as
+    "no files" would empty the whole store on the first run of a machine whose
+    drop folder is not set up yet.
+    """
+    directory = gemini_dir()
+    try:
+        present = {path.name for path in directory.iterdir()}
+    except OSError:
+        return processed
+    return {name: mtime for name, mtime in processed.items() if name in present}
+
+
 def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) -> None:
     """Build and persist one day's file. include_gemini is False for backfill
     runs (the drop folder has no reliable per-day dates, so it's only folded into
@@ -150,7 +177,8 @@ def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) ->
     if newly_processed:
         with locked(STATE_PATH):
             state = load_json(STATE_PATH, {"gemini_processed": {}})
-            state.setdefault("gemini_processed", {}).update(newly_processed)
+            merged = {**state.get("gemini_processed", {}), **newly_processed}
+            state["gemini_processed"] = _prune_processed(merged)
             atomic_write_json(STATE_PATH, state)
 
     if not sections:
