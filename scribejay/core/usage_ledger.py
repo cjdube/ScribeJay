@@ -78,11 +78,29 @@ def _max_bytes() -> int:
 #
 # Local models are free at the point of use, so the ollama backend
 # short-circuits to 0.0 without consulting this table at all.
+#
+# CHECKED AGAINST ai.google.dev/gemini-api/docs/pricing ON 2026-09-08. The three
+# 3.x Flash rows were wrong by 2.5x before that: they carried 2.5 Flash's
+# (0.30, 2.50) rather than their own (0.75, 3.75), so every Gemini row this
+# install has written since it moved to 3.7 Flash under-reports its cost.
+# Nothing was over-charged — the ledger is a local estimate and never a bill —
+# but a total read out of logs/usage.jsonl before this date is low, not high.
+#
+# THOSE 3.x FLASH RATES DOUBLE ON 2027-01-01. Google calls 0.75/3.75
+# introductory pricing "through Dec 31, 2026"; from Jan 1 the same three models
+# are 1.50/7.50. Nothing here knows that — the table has no notion of a date —
+# so on New Year's Day it silently starts halving the cost of every Gemini call
+# until somebody edits these numbers.
+#
+# 2.5 Pro is the ≤200k-prompt rate. Above 200k Google charges 2.50/15.00, and
+# this table has no notion of prompt size either. ScribeJay compacts every
+# prompt to a few thousand tokens, so the cheap tier is the true one here.
 _PRICES = {
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.5-pro": (1.25, 10.00),
-    "gemini-3.6-flash": (0.30, 2.50),
-    "gemini-3.7-flash": (0.30, 2.50),
+    "gemini-3.6-flash": (0.75, 3.75),
+    "gemini-3.7-flash": (0.75, 3.75),
+    "gemini-3.8-flash": (0.75, 3.75),
 }
 
 
