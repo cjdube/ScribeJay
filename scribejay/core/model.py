@@ -342,6 +342,12 @@ def _one_call(
             message = _openrouter_chat(messages, model=model, timeout=timeout,
                                        logger=logger, think=think)
         else:
+            # Not dead code, and not reachable today: _llm_chat validates `b`
+            # against BACKENDS before it ever calls here, and nothing else
+            # calls _one_call. This is the drift guard between that tuple and
+            # this chain — two hand-kept lists that have to agree. Add a
+            # backend to BACKENDS, forget the elif, and this says so in one
+            # sentence instead of returning None and crashing further down.
             raise ValueError(
                 f"unknown SCRIBEJAY_LLM_BACKEND {b!r} "
                 f"(expected 'ollama', 'gemini' or 'openrouter')")
