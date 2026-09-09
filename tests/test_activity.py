@@ -335,3 +335,18 @@ def test_off_topic_matches_a_whole_segment_not_a_prefix():
     out = lc.candidate_urls(
         [_fetchable_site("corp.com", [("/enterprise/why-we-moved-to-postgres", 1)])], 5)
     assert [p["path"] for p in out] == ["/enterprise/why-we-moved-to-postgres"]
+
+
+def test_a_lifestyle_section_is_still_a_candidate():
+    """"lifestyle" is where an editor files a piece, not what the piece is
+    about. Every other name on the off-topic list IS the subject — a page under
+    /mlb/ is baseball — but a general news site files reasoning, habit, focus
+    and decision-making writing under /lifestyle/, and that reading is on the
+    log's subject. `SUMMARY_SYSTEM_PROMPT` judges the body and rejects the
+    horoscope this lets through, so the cost is one wasted fetch."""
+    out = lc.candidate_urls(
+        [_fetchable_site(
+            "news.com",
+            [("/lifestyle/why-experts-rethink-their-own-decisions", 1)])], 5)
+    assert [p["path"] for p in out] == [
+        "/lifestyle/why-experts-rethink-their-own-decisions"]

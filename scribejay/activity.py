@@ -214,11 +214,18 @@ def _looks_published(path: str) -> bool:
 #
 # Matched as whole path segments, so "ent" needs to be a section rather than the
 # start of "enterprise".
+#
+# "lifestyle" is deliberately NOT here. It is the section a psychology, habit,
+# focus or decision-making piece gets filed under on a general news site, and
+# the log now covers how people think and decide. Every other name here IS the
+# subject; "lifestyle" only says where an editor put it. The body prompt in
+# `daily_chrome_learnings.SUMMARY_SYSTEM_PROMPT` still judges the subject, so
+# the cost of leaving it out is a fetch and a model call, never a wrong bullet.
 _OFF_TOPIC_SECTIONS = frozenset({
     "sports", "sport", "mlb", "nfl", "nba", "nhl", "wnba", "ncaa", "mls",
     "soccer", "golf", "tennis", "olympics", "fitness",
     "entertainment", "ent", "celebrity", "celebrities", "movies", "tv", "music",
-    "horoscope", "recipes", "recipe", "food", "cooking", "lifestyle",
+    "horoscope", "recipes", "recipe", "food", "cooking",
     "travel", "fashion", "weather",
 })
 
