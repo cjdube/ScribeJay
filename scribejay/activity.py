@@ -203,10 +203,14 @@ def _looks_published(path: str) -> bool:
 # It exists because the two are not the same test. "thinking-of-ending-things"
 # and "rigatoni-with-marinated-tomatoes-and-burrata" are published writing by
 # every measure `_looks_published` applies. Over the same five days they and
-# three like them took 5 of 16 page notes. DRAFT_SYSTEM_PROMPT already tells the
-# model to drop fitness, social, travel and household items; this drops them
-# before they cost anything, and before `journal.py:pages_read_section` prints
-# them into the vault, which — unlike the draft prompt — has no judgment.
+# three like them took 5 of 16 page notes. This is the cheap half of a pair:
+# `daily_chrome_learnings.SUMMARY_SYSTEM_PROMPT` judges the same question on the
+# fetched body and is the one that actually catches things, because a subject is
+# not visible in a url — "/news/us/articles/mom-found-guilty-abuse-letting-..."
+# is published writing under a section that also carries real AI stories, so no
+# list of section names can reject it without rejecting those too. What this
+# list buys is the fetch and the model call never happening at all, for the
+# obvious cases where the section name IS the subject.
 #
 # Matched as whole path segments, so "ent" needs to be a section rather than the
 # start of "enterprise".

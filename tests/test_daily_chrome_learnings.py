@@ -187,8 +187,8 @@ class _RecordingLogger:
 
 
 @pytest.mark.parametrize("reply,expected", [
-    ("SKIP", "1 too thin to describe, 0 returned nothing"),
-    ("", "0 too thin to describe, 1 returned nothing"),
+    ("SKIP", "1 off-topic or too thin to describe, 0 returned nothing"),
+    ("", "0 off-topic or too thin to describe, 1 returned nothing"),
 ])
 def test_the_warning_says_which_kind_of_nothing_came_back(monkeypatch, reply, expected):
     """Both produce no note, but only one is a fault. A single combined count
@@ -214,6 +214,23 @@ def test_fetched_text_matching_an_exclusion_keyword_is_never_summarized(fetchabl
     dc.main()
     assert len(prompts) == 1           # the draft only; no summary call was made
     assert "page_notes:" not in prompts[0]
+
+
+def test_the_summarizer_is_told_to_skip_a_page_that_is_off_the_log_s_subject():
+    """The only place a page's SUBJECT can be judged.
+
+    `activity.py` sees a url, and a url says whether somebody published the
+    page, never what it is about — a real crime story sat under
+    "/news/us/articles/..." on a site that also carries AI stories, passed every
+    upstream guard, and was printed into the vault by `pages_read_section`,
+    which has no judgment. So the gate lives in this prompt, and it has to be
+    unambiguous that a well-written off-topic page is still SKIP.
+    """
+    prompt = dc.SUMMARY_SYSTEM_PROMPT
+    assert "SKIP" in prompt.split("Write 3-5 plain sentences")[0]
+    for subject in ("crime", "politics", "sport", "travel"):
+        assert subject in prompt.lower()
+    assert "well written and interesting" in prompt
 
 
 def test_a_skip_summary_is_dropped(fetchable, monkeypatch):
