@@ -21,7 +21,11 @@ Reads the prior day's history via `scribejay/sources/chrome.py` and asks the
 model for a compact daily log in two sections:
 
 - **Tools & Tech Encountered**
-- **Product & Strategy** — for product-management reading
+- **Product & Strategy** — for product-management reading, and for reading
+  about how people think and decide: reasoning, judgment, critical thinking,
+  cognitive bias, decision-making, mental models, problem framing and
+  learning. Cognition sits here rather than in a section of its own, so the
+  small local model still fills a two-section template.
 
 Written as `Daily-Chrome-<date>.md`.
 

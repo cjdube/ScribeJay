@@ -233,6 +233,27 @@ def test_the_summarizer_is_told_to_skip_a_page_that_is_off_the_log_s_subject():
     assert "well written and interesting" in prompt
 
 
+def test_cognition_reading_is_on_the_log_s_subject():
+    """Critical thinking is the work, not a diversion from it.
+
+    The keep list and the SKIP list sit in the same prompt, and the SKIP list
+    names whole fields ("health", "personal life") that a page on reasoning or
+    cognitive bias reads as. So the keep list has to name the subject out loud
+    in both places, and the draft has to have somewhere to put the bullet, or
+    the page note is written and then dropped on the floor.
+    """
+    summary = dc.SUMMARY_SYSTEM_PROMPT.lower()
+    keep = summary.split("if the page is not about one of those")[0]
+    for subject in ("critical thinking", "cognitive bias", "decision-making",
+                    "mental models", "reasoning"):
+        assert subject in keep
+
+    draft = dc.DRAFT_SYSTEM_PROMPT.lower()
+    section = draft.split("product & strategy\" from")[1].split("- page_notes:")[0]
+    for subject in ("critical thinking", "decision-making", "mental models"):
+        assert subject in section
+
+
 def test_a_skip_summary_is_dropped(fetchable, monkeypatch):
     _stub_fetch(monkeypatch, [_page()])
     prompts = []

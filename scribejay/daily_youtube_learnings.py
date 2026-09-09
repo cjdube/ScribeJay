@@ -2,7 +2,7 @@
 (one file per day). Non-interactive — run by launchd every morning, covering the
 prior day's Liked videos.
 
-The user deliberately Likes AI/tooling and product-management videos, so the day's
+The user deliberately Likes AI/tooling, product-management and thinking/reasoning videos, so the day's
 Likes are a clean signal for what he chose to learn. The model writes a short synthesis of what the videos
 teach; a deterministic, scheme-validated linked list of the exact videos is
 appended in Python. A day with no Likes writes nothing (keeps the vault clean).
@@ -30,8 +30,9 @@ from scribejay.sinks.vault import persist_or_email
 from scribejay.sources.youtube import fetch_liked_videos
 
 DRAFT_SYSTEM_PROMPT = f"""You are {config.user_name()}'s personal executive assistant. You write a \
-short thematic synthesis of the AI/technical and product-management YouTube videos he Liked \
-yesterday — the videos he chose to learn from. You are running unattended — infer everything from the data given.
+short thematic synthesis of the AI/technical, product-management, and thinking-and-reasoning \
+(critical thinking, judgment, cognitive bias, decision-making, mental models, learning) YouTube \
+videos he Liked yesterday — the videos he chose to learn from. You are running unattended — infer everything from the data given.
 
 Use EXACTLY this template, filling in the bracketed parts (do not add extra sections, do not
 include the literal brackets):
