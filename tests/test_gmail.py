@@ -312,7 +312,7 @@ def test_inbox_excludes_what_he_wrote_himself(gmail):
 
 
 def test_inbox_includes_archived_mail(gmail):
-    """The design decision worth pinning. This runs at 5:20 the next morning,
+    """The design decision worth pinning. This runs at 4:20 the next morning,
     by which time anything dealt with is often archived — and an archived
     message he never answered is exactly the one worth recording. Scoping to
     in:inbox would drop it."""

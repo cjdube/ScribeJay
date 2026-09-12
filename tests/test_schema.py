@@ -151,7 +151,7 @@ def test_no_secret_section_appears_in_the_settings_file_layout():
 
 def test_config_can_resolve_every_row():
     # Nothing here raises: a row whose default is unparseable would blow up the
-    # first task that reads it, at 4:30 AM, unattended.
+    # first task that reads it, at 3:30 AM, unattended.
     for s in schema.SETTINGS:
         if not s.secret:
             config.getenv(s.key)

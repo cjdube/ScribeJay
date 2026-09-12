@@ -200,7 +200,7 @@ def test_extracted_text_is_capped(monkeypatch, real_local):
 
 def test_a_missing_trafilatura_reads_as_no_text(monkeypatch):
     """An install that never switched web fetch on does not have the optional
-    extra. That must be an empty result, not an ImportError up through a 5:15
+    extra. That must be an empty result, not an ImportError up through a 4:15
     AM task."""
     import builtins
     real_import = builtins.__import__

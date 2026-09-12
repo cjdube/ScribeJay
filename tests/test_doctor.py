@@ -39,12 +39,12 @@ def test_a_task_with_no_log_has_never_run(tmp_path):
 
 def test_a_clean_run_ends_on_its_completion_line(tmp_path):
     _log(tmp_path, "daily_commits", [
-        "2026-08-30 04:55:01,000 [INFO] Starting daily commits run",
-        "2026-08-30 04:55:09,000 [INFO] Daily commits run complete",
+        "2026-08-30 03:55:01,000 [INFO] Starting daily commits run",
+        "2026-08-30 03:55:09,000 [INFO] Daily commits run complete",
     ])
     check = doctor.last_run(COMMITS, tmp_path)
     assert check.status == doctor.OK
-    assert "2026-08-30 04:55:09" in check.detail
+    assert "2026-08-30 03:55:09" in check.detail
 
 
 def test_a_run_that_started_and_never_finished_fails(tmp_path):
@@ -52,20 +52,20 @@ def test_a_run_that_started_and_never_finished_fails(tmp_path):
     loaded, `status` says the source is on, and the page is still missing —
     because the last start never reached its boundary line."""
     _log(tmp_path, "daily_commits", [
-        "2026-08-29 04:55:01,000 [INFO] Starting daily commits run",
-        "2026-08-29 04:55:09,000 [INFO] Daily commits run complete",
-        "2026-08-30 04:55:01,000 [INFO] Starting daily commits run",
-        "2026-08-30 04:55:03,000 [ERROR] boom",
+        "2026-08-29 03:55:01,000 [INFO] Starting daily commits run",
+        "2026-08-29 03:55:09,000 [INFO] Daily commits run complete",
+        "2026-08-30 03:55:01,000 [INFO] Starting daily commits run",
+        "2026-08-30 03:55:03,000 [ERROR] boom",
     ])
     check = doctor.last_run(COMMITS, tmp_path)
     assert check.status == doctor.FAIL
-    assert "2026-08-29 04:55:09" in check.detail
-    assert "2026-08-30 04:55:03" in check.detail
+    assert "2026-08-29 03:55:09" in check.detail
+    assert "2026-08-30 03:55:03" in check.detail
 
 
 def test_a_log_with_no_completion_at_all_fails(tmp_path):
     _log(tmp_path, "daily_commits", [
-        "2026-08-30 04:55:01,000 [INFO] Starting daily commits run",
+        "2026-08-30 03:55:01,000 [INFO] Starting daily commits run",
     ])
     assert doctor.last_run(COMMITS, tmp_path).status == doctor.FAIL
 
@@ -74,7 +74,7 @@ def test_untimestamped_continuation_lines_are_ignored(tmp_path):
     """A traceback's body carries no stamp. Counting one as the newest line
     would report every task that ever logged an exception as unfinished."""
     _log(tmp_path, "daily_commits", [
-        "2026-08-30 04:55:09,000 [INFO] Daily commits run complete",
+        "2026-08-30 03:55:09,000 [INFO] Daily commits run complete",
         "  File \"x.py\", line 1, in <module>",
     ])
     assert doctor.last_run(COMMITS, tmp_path).status == doctor.OK

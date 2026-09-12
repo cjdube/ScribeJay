@@ -364,7 +364,7 @@ def pushed(projects, tmp_path):
 
     Each has committed once on the same day, and both have pushed. PROJECTS_DIR's
     copy has never fetched, so the laptop's commit exists on the remote and
-    nowhere on this disk — exactly the state a 4:55 AM run finds."""
+    nowhere on this disk — exactly the state a 3:55 AM run finds."""
     bare = _bare(tmp_path / "origin.git")
     alpha = _repo(projects, "alpha")
     _commit_at(alpha, "here.py", "x\n", "2026-08-25T10:00:00-04:00")
@@ -431,7 +431,7 @@ def test_a_failed_fetch_still_leaves_the_day_readable(projects, monkeypatch):
 
 
 def test_fetch_can_never_sit_waiting_for_a_password(projects, monkeypatch):
-    # A 4:55 AM run has no terminal. Without these, a remote asking for a password
+    # A 3:55 AM run has no terminal. Without these, a remote asking for a password
     # or an unknown host key blocks until FETCH_TIMEOUT every single morning.
     repo = _repo(projects, "alpha")
     seen = {}

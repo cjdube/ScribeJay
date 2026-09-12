@@ -140,7 +140,7 @@ def test_the_probe_is_read_fresh_every_call(monkeypatch, tmp_path):
 
 def test_every_feature_has_a_working_probe():
     # A feature added to the table without a probe branch raises KeyError at
-    # 4:30 AM inside a task's guard, which is the worst place to find out.
+    # 3:30 AM inside a task's guard, which is the worst place to find out.
     for name in features.NAMES:
         assert isinstance(features.configured(name), bool)
 

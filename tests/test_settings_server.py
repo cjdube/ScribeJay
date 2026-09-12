@@ -288,7 +288,7 @@ def test_an_empty_value_clears_back_to_the_default():
 
 def test_nothing_is_written_when_any_field_is_invalid():
     """Half-applying is the worst outcome available: the user reads an error,
-    assumes nothing happened, and a 4:30 job runs against a setting they
+    assumes nothing happened, and a 3:30 job runs against a setting they
     thought they had abandoned."""
     settings_form.apply({"OLLAMA_MODEL": "keepme"})
 
@@ -570,7 +570,7 @@ def test_the_chrome_test_button_asks_for_yesterday_only(monkeypatch):
     included today's browsing and was then printed as "row(s) for yesterday".
 
     That matters because `doctor --probe` calls this same function and promises
-    what it prints is what tomorrow's 5:15 run will see. A healthy-looking
+    what it prints is what tomorrow's 4:15 run will see. A healthy-looking
     number made entirely of today's rows breaks that promise.
     """
     from scribejay.sources import chrome
