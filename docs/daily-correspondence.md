@@ -1,6 +1,6 @@
 # Daily correspondence — who he talked to, and who is still waiting
 
-`scribejay/daily_correspondence.py`, daily at 5:20 AM. Reads yesterday's Gmail
+`scribejay/daily_correspondence.py`, daily at 4:20 AM. Reads yesterday's Gmail
 **metadata** in both directions — headers, never bodies — groups it by
 conversation and writes `Correspondence-<date>.md` into `CORRESPONDENCE_DIR`.
 
@@ -33,7 +33,7 @@ either way.
 
 **"Mail that arrived", not "mail still in the inbox".** `INBOX_SCOPE` is
 `-in:sent -in:draft -in:spam -in:trash -in:chats` rather than `in:inbox`. The
-job runs at 5:20 the next morning, by which time anything already dealt with
+job runs at 4:20 the next morning, by which time anything already dealt with
 has often been archived — and an archived message he never answered is exactly
 the one worth recording.
 

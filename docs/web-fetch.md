@@ -29,7 +29,7 @@ fails a morning.
 
 ## Which pages get fetched — `activity.py:candidate_urls`
 
-Deterministic Python, not a model call. Asking a small local model at 5:15 AM
+Deterministic Python, not a model call. Asking a small local model at 4:15 AM
 which pages look interesting buys nothing a sort cannot do, and adds a call that
 can time out or return nothing.
 
@@ -71,7 +71,7 @@ not five tabs of the same doc site.
 agent, a response-size cap, and text extracted by
 [trafilatura](https://trafilatura.readthedocs.io/) — an optional extra, imported
 lazily. Not installed reads as "no text", never as an ImportError up through a
-5:15 AM task.
+4:15 AM task.
 
 **A site that says no is skipped.** HTTP 401, 403, 407, 429 and 451 return
 `{"error": "blocked: HTTP …"}` and that is the end of that page. There is no
@@ -176,7 +176,7 @@ scribejay run daily_chrome_learnings --date 2026-08-29 --dry-run --web-fetch on
 
 `--dry-run` writes no vault file and sends no email. It also logs to
 `logs/daily_chrome_learnings_dryrun.log`, not the task log, so a dry run never
-appears as a completed 5:15 run to `scribejay doctor` or to the dashboard that
+appears as a completed 4:15 run to `scribejay doctor` or to the dashboard that
 reads that folder.
 
 ## The bake-off

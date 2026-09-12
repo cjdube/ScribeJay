@@ -45,12 +45,12 @@ See [docs/cli.md](docs/cli.md) for every command.
 
 | Job | Schedule | Writes | Needs |
 |---|---|---|---|
-| `ai_chat_learnings` | 4:30 AM | Yesterday's Claude Code / Codex / Gemini chats, summarized to a page | nothing |
-| `claude_time_blocks` | 4:45 AM | Claude Code / Codex working sessions, as calendar events | Google |
-| `daily_commits` | 4:55 AM | Yesterday's git commits across your projects, to a page | nothing |
-| `daily_youtube_learnings` | 5:05 AM | Yesterday's YouTube Likes, summarized to a page | Google |
-| `daily_chrome_learnings` | 5:15 AM | Yesterday's Chrome browsing, summarized to a page | nothing |
-| `daily_correspondence` | 5:20 AM | Yesterday's mail both ways, and who is still waiting on a reply | Google |
+| `ai_chat_learnings` | 3:30 AM | Yesterday's Claude Code / Codex / Gemini chats, summarized to a page | nothing |
+| `claude_time_blocks` | 3:45 AM | Claude Code / Codex working sessions, as calendar events | Google |
+| `daily_commits` | 3:55 AM | Yesterday's git commits across your projects, to a page | nothing |
+| `daily_youtube_learnings` | 4:05 AM | Yesterday's YouTube Likes, summarized to a page | Google |
+| `daily_chrome_learnings` | 4:15 AM | Yesterday's Chrome browsing, summarized to a page | nothing |
+| `daily_correspondence` | 4:20 AM | Yesterday's mail both ways, and who is still waiting on a reply | Google |
 | `strava_download` | 5:50 AM | Yesterday's Strava activities, as calendar events | Google + Strava |
 | `calendar_colorizer` | 5:00 PM | Yesterday's uncategorized events, colour-coded by type | Google |
 

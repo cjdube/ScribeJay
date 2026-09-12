@@ -1,6 +1,6 @@
 # Daily commits — what got shipped
 
-`scribejay/daily_commits.py`, daily at 4:55 AM. Writes `Daily-Work-<date>.md`
+`scribejay/daily_commits.py`, daily at 3:55 AM. Writes `Daily-Work-<date>.md`
 into `LEARNINGS_DIR` from two sources: yesterday's commits in the checkouts under
 `PROJECTS_DIR`, grouped by the model into a short "what I built" page, and the
 ClickUp Tasks that reached a Done status that day, listed by Python.
@@ -59,7 +59,7 @@ separately calls the ClickUp API with `CLICKUP_API_TOKEN`.
 
 It exists because the read is otherwise blind to any machine but this one. Work
 committed and pushed elsewhere — a cloud session, a second Mac, an edit through
-the GitHub web UI — is simply not in the local object store at 4:55 AM, and the
+the GitHub web UI — is simply not in the local object store at 3:55 AM, and the
 page that results is indistinguishable from a genuinely quiet day. Nothing alerts
 on it, because nothing failed.
 

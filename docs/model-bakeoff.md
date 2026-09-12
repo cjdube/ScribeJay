@@ -88,7 +88,7 @@ the model text separately from the page, and only the model text is scored.
 
 Neither arm ever produced an empty or unusable draft. Gemma is slower on
 Chrome — it makes the same 2–4 calls but each one takes longer — and 14 seconds
-is still nothing against a 5:15 job that has the morning to itself. **Speed is
+is still nothing against a 4:15 job that has the morning to itself. **Speed is
 not a reason to reject either arm.**
 
 Gemma's two YouTube template misses are the same miss twice: the prompt asks for

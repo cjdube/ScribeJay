@@ -12,8 +12,8 @@ for AI-agent conversations and has its own doc because its sources are unusual.
 
 | Task | Schedule | Channel |
 |---|---|---|
-| `scribejay/daily_chrome_learnings.py` | Daily 5:15 AM | Chrome browsing history |
-| `scribejay/daily_youtube_learnings.py` | Daily 5:05 AM | YouTube Liked videos |
+| `scribejay/daily_chrome_learnings.py` | Daily 4:15 AM | Chrome browsing history |
+| `scribejay/daily_youtube_learnings.py` | Daily 4:05 AM | YouTube Liked videos |
 
 ## Chrome
 

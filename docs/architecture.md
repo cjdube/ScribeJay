@@ -42,12 +42,12 @@ model call is what most tasks need, not what makes it a ScribeJay task.
 
 | Task | Schedule | launchd label |
 |---|---|---|
-| `scribejay/ai_chat_learnings.py` | Daily 4:30 AM | `local.scribejay.aichatlearnings` |
-| `scribejay/claude_time_blocks.py` | Daily 4:45 AM | `local.scribejay.claudetimeblocks` |
-| `scribejay/daily_commits.py` | Daily 4:55 AM | `local.scribejay.dailycommits` |
-| `scribejay/daily_youtube_learnings.py` | Daily 5:05 AM | `local.scribejay.dailyyoutubelearnings` |
-| `scribejay/daily_chrome_learnings.py` | Daily 5:15 AM | `local.scribejay.dailychromelearnings` |
-| `scribejay/daily_correspondence.py` | Daily 5:20 AM | `local.scribejay.dailycorrespondence` |
+| `scribejay/ai_chat_learnings.py` | Daily 3:30 AM | `local.scribejay.aichatlearnings` |
+| `scribejay/claude_time_blocks.py` | Daily 3:45 AM | `local.scribejay.claudetimeblocks` |
+| `scribejay/daily_commits.py` | Daily 3:55 AM | `local.scribejay.dailycommits` |
+| `scribejay/daily_youtube_learnings.py` | Daily 4:05 AM | `local.scribejay.dailyyoutubelearnings` |
+| `scribejay/daily_chrome_learnings.py` | Daily 4:15 AM | `local.scribejay.dailychromelearnings` |
+| `scribejay/daily_correspondence.py` | Daily 4:20 AM | `local.scribejay.dailycorrespondence` |
 | `scribejay/strava_download.py` | Daily 5:50 AM | `local.scribejay.stravadownload` |
 | `scribejay/calendar_colorizer.py` | Daily 5:00 PM | `local.scribejay.calendarcolorizer` |
 

@@ -80,9 +80,9 @@ GOOGLE
                                  hand to consent again.
 
 JOBS
-  ok    daily_commits            last completed 2026-08-30 04:55:09
-  FAIL  daily_chrome_learnings   last completed 2026-08-29 05:15:41, but a later
-                                 run stopped at 2026-08-30 05:15:12 without
+  ok    daily_commits            last completed 2026-08-30 03:55:09
+  FAIL  daily_chrome_learnings   last completed 2026-08-29 04:15:41, but a later
+                                 run stopped at 2026-08-30 04:15:12 without
                                  finishing — see .../daily_chrome_learnings.log
 ```
 
@@ -101,7 +101,7 @@ Two checks are worth calling out because nothing else can make them:
   calendar and mail working while the new source returns 403 — so the symptom
   is one empty page and nothing that looks like an auth problem.
 
-`--probe` calls the same fetchers a 4:30 AM run calls and reports the row
+`--probe` calls the same fetchers a 3:30 AM run calls and reports the row
 count, so "0 rows" here means 0 rows tomorrow morning. It never sends a push:
 testing the alert channel means buzzing your phone, and a diagnostic that does
 that is one people stop running.
@@ -111,7 +111,7 @@ the fault you ran it to explain.
 
 **A note on Full Disk Access.** macOS grants it per *application*, and a
 command you type inherits your terminal's grant, not launchd's. A passing check
-is strong evidence the 5:15 job can read Chrome's history — not proof. When it
+is strong evidence the 4:15 job can read Chrome's history — not proof. When it
 passes and the page is still empty, the JOBS section names the log to read.
 
 ## `scribejay run`
