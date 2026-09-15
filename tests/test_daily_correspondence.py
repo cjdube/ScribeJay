@@ -151,6 +151,19 @@ def test_backfill_is_one_run_in_the_dashboard_not_three(stubbed_run, monkeypatch
     assert sum(1 for m in msgs if is_run_success(m)) == 1
 
 
+def test_the_rewrite_warning_is_in_help_where_a_user_checks(monkeypatch, capsys):
+    """This task is the one whose backfill destroys history: it re-reads a live
+    mailbox, so a rebuilt page carries only the mail still out of the Trash.
+    The warning used to live in docs/daily-correspondence.md alone — the one
+    place a user running --help has no reason to open."""
+    monkeypatch.setattr(sys, "argv", ["daily_correspondence", "--help"])
+    with pytest.raises(SystemExit):
+        dc.main()
+    help_text = capsys.readouterr().out
+    assert help_text.count("DESTRUCTIVE") >= 2  # --date and --backfill both
+    assert "deleted mail is lost" in help_text
+
+
 def test_one_bad_day_does_not_stop_the_backfill(stubbed_run, monkeypatch):
     calls = {"n": 0}
 

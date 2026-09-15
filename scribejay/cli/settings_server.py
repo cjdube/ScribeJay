@@ -102,6 +102,33 @@ def check_request(method: str, headers, query: dict, form: dict,
     return 200, ""
 
 
+def check_body_length(headers) -> tuple[int, int]:
+    """(status, length) for one request body. 200 means "read that many bytes".
+
+    Pure, and separated from the handler for the same reason `check_request`
+    is: a rule tested as a rule needs no socket and no thread.
+
+    This runs BEFORE `check_request`, because the body has to be read before
+    the CSRF token inside it can be checked — which makes it the only thing an
+    unauthenticated caller can make this process do, and the reason
+    MAX_BODY_BYTES has to hold on its own.
+
+    Both ends of the range are checked, and that is the whole point. A
+    *negative* Content-Length passes a `> MAX_BODY_BYTES` test and then reaches
+    `rfile.read(-1)`, which reads to EOF — no bound at all. A non-numeric one
+    raises inside the handler instead, and socketserver answers that by
+    printing a traceback into the terminal the user launched from, which is the
+    same thing `log_message` exists to prevent.
+    """
+    try:
+        length = int(headers.get("Content-Length") or 0)
+    except ValueError:
+        return 400, 0
+    if not 0 <= length <= MAX_BODY_BYTES:
+        return 413, 0
+    return 200, length
+
+
 def _cookie_token(headers) -> str:
     for part in (headers.get("Cookie") or "").split(";"):
         name, _, value = part.strip().partition("=")
@@ -182,9 +209,9 @@ def make_handler(session: Session):
             self._send(200, settings_form.render(session.token), set_cookie=True)
 
         def do_POST(self):
-            length = int(self.headers.get("Content-Length") or 0)
-            if length > MAX_BODY_BYTES:
-                self._send(413, "<h1>413</h1>")
+            status, length = check_body_length(self.headers)
+            if status != 200:
+                self._send(status, f"<h1>{status}</h1>")
                 return
             raw = self.rfile.read(length).decode("utf-8") if length else ""
             form = _one_valued(urllib.parse.parse_qs(raw, keep_blank_values=True))

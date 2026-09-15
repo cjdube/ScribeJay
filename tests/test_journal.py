@@ -265,3 +265,52 @@ def test_a_clickup_space_cannot_inject_markdown():
     ])
     # This section renders no links at all, so any "](" would be forged.
     assert "](" not in section
+
+
+# --------------------------------------------------------------------------- #
+# the url side of the same attack
+#
+# The tests above guard the words around a link. These guard the destination:
+# a `)` in the url closes the `(...)` early, and what follows renders as
+# Markdown the url's author chose. The url reaches here from Chrome's own
+# history table, so it is a string a visited page controls.
+# --------------------------------------------------------------------------- #
+
+def test_a_visited_url_cannot_forge_a_second_link():
+    section = lc.pages_read_section([
+        _page(url="https://good.example/a) [Free gift](http://evil.example"),
+    ])
+    # One link, and no bracket the remote page chose survives into the page —
+    # so there is nothing for a renderer to read as a second label.
+    assert section.count("](") == 1
+    assert "[Free gift]" not in section
+
+
+def test_a_liked_video_url_cannot_forge_a_second_link():
+    section = lc.videos_section([
+        {"title": "Some video", "channel": "Chan",
+         "url": "https://youtu.be/x) [Free gift](http://evil.example"},
+    ])
+    assert section.count("](") == 1
+
+
+def test_a_url_cannot_inject_bold_text_after_its_link():
+    """The variant that needs no brackets at all: close the link, then write
+    whatever you like into the page. The payload has to end up INSIDE the link
+    target, where a renderer shows it as an ugly url rather than as bold text
+    the url's author chose."""
+    section = lc.pages_read_section([
+        _page(url="https://good.example/a)***PAY NOW***"),
+    ])
+    assert section.count("](") == 1
+    assert "a%29***PAY%20NOW***)" in section
+
+
+def test_an_ordinary_url_with_parens_still_links_once():
+    """`)` is legal in a path — Wikipedia uses it — so this fires with no
+    attacker at all, and the link has to survive, not just be defused."""
+    section = lc.pages_read_section([
+        _page(url="https://en.wikipedia.org/wiki/Python_(programming_language)"),
+    ])
+    assert section.count("](") == 1
+    assert "%28programming_language%29" in section

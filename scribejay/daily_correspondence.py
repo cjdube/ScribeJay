@@ -23,10 +23,19 @@ to steer.
 for; the ingest queue would turn them into asserted wiki pages. See
 `_correspondence_dir`.
 
+**Re-running a past day DESTROYS that day's page.** `write_entry` overwrites,
+and this task's source is a live mailbox rather than a local history: a rebuilt
+page carries only the mail still out of the Trash today, so a thread since
+deleted is gone from the record that existed to remember it. That makes
+`--date` and `--backfill` recovery tools for a day that never got written, not
+a way to refresh a day that did. `daily_chrome_learnings` re-reads a local
+SQLite file that does not shrink, which is why its backfill is safe and this
+one is not. See docs/daily-correspondence.md.
+
 Usage:
     python -m scribejay.daily_correspondence                 # yesterday
-    python -m scribejay.daily_correspondence --date 2026-08-21
-    python -m scribejay.daily_correspondence --backfill 14   # each of the last 14 days
+    python -m scribejay.daily_correspondence --date 2026-08-21   # DESTRUCTIVE
+    python -m scribejay.daily_correspondence --backfill 14       # DESTRUCTIVE
 """
 
 import argparse
@@ -113,9 +122,18 @@ def _run_for_day(start, end, day, me, logger) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--date", default=None, help="write a single day YYYY-MM-DD")
+    # The warning belongs in --help, not only in the docs: --help is where a
+    # user checks before running something, and the one document that carried
+    # this is the one they have no reason to open.
+    parser.add_argument("--date", default=None,
+                        help="write a single day YYYY-MM-DD. DESTRUCTIVE: "
+                             "overwrites that day's page with what Gmail can "
+                             "see today; deleted mail is lost")
     parser.add_argument("--backfill", type=int, default=0,
-                        help="write each of the last N days; default 0 = just yesterday")
+                        help="write each of the last N days; default 0 = just "
+                             "yesterday. DESTRUCTIVE: overwrites those pages "
+                             "with what Gmail can see today; deleted mail is "
+                             "lost. See docs/daily-correspondence.md")
     args = parser.parse_args()
 
     logger = setup_logger("daily_correspondence")

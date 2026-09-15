@@ -140,6 +140,50 @@ def test_the_token_is_long_enough_to_be_unguessable(session):
     assert len(session.token) >= 32
 
 
+# ---- the body cap -------------------------------------------------------------
+#
+# This runs before the guards above, because the CSRF token lives inside the
+# body. So it is the one thing an unauthenticated caller can make this process
+# do, and it has to hold on its own.
+
+def test_an_ordinary_form_body_is_allowed():
+    status, length = settings_server.check_body_length({"Content-Length": "4096"})
+    assert (status, length) == (200, 4096)
+
+
+def test_a_missing_content_length_reads_nothing():
+    status, length = settings_server.check_body_length({})
+    assert (status, length) == (200, 0)
+
+
+def test_an_oversized_body_is_refused():
+    status, _ = settings_server.check_body_length(
+        {"Content-Length": str(settings_server.MAX_BODY_BYTES + 1)})
+    assert status == 413
+
+
+def test_a_body_exactly_at_the_cap_is_allowed():
+    at_cap = settings_server.MAX_BODY_BYTES
+    status, length = settings_server.check_body_length({"Content-Length": str(at_cap)})
+    assert (status, length) == (200, at_cap)
+
+
+def test_a_negative_content_length_is_refused():
+    """The cap has to check BOTH ends. -1 is not greater than MAX_BODY_BYTES,
+    so a `> MAX` test passes it straight through to rfile.read(-1) — which
+    reads to EOF, no bound at all. 8MB against a 1MB cap was reproducible."""
+    status, length = settings_server.check_body_length({"Content-Length": "-1"})
+    assert status == 413
+    assert length == 0
+
+
+def test_a_non_numeric_content_length_is_refused_not_raised():
+    """int('abc') inside do_POST raises, and socketserver answers that by
+    printing a traceback into the terminal the user launched from."""
+    status, _ = settings_server.check_body_length({"Content-Length": "abc"})
+    assert status == 400
+
+
 def test_the_server_does_not_log_request_lines():
     """The default BaseHTTPRequestHandler access log prints the request line,
     and a GET carries the token in its query string — straight into whatever

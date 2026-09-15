@@ -143,8 +143,15 @@ they do yesterday, which is the only day they are for. The six that do:
 | `claude_time_blocks` | `--date`, `--backfill N`, `--dry-run` |
 | `daily_chrome_learnings` | `--date`, `--backfill N`, `--dry-run`, `--web-fetch` |
 | `daily_commits` | `--date`, `--backfill N` |
-| `daily_correspondence` | `--date`, `--backfill N` |
+| `daily_correspondence` | `--date` ⚠️, `--backfill N` ⚠️ |
 | `daily_youtube_learnings` | `--date`, `--dry-run` |
+
+⚠️ **`daily_correspondence` is the one task whose backfill destroys history.**
+It re-reads a live mailbox, so a rebuilt page carries only the mail still out
+of the Trash today — and the old page is overwritten, not merged. Use it for a
+day that never got written, never to refresh one that did. Every other task
+re-reads a local file that does not shrink, so their backfills are safe.
+[docs/daily-correspondence.md](docs/daily-correspondence.md) has the detail.
 
 `--dry-run` exists only on `claude_time_blocks`, `daily_chrome_learnings`
 and `daily_youtube_learnings`.
