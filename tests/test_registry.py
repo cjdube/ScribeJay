@@ -192,3 +192,73 @@ def test_schedule_times_are_unique_and_valid():
 def test_an_unknown_task_raises():
     with pytest.raises(KeyError):
         registry.get("daily_horoscope")
+
+
+# ---- the schedule's ninth copy ----
+#
+# AGENTS.md holds generated surfaces to one source: "never a hand-kept list, or
+# the screen drifts from what the code reads." The plists obey it — schedule.py
+# reads these rows. The run TIMES do not: they are also written out by hand in
+# the README and seven docs.
+#
+# The cost is in this repo's own history. a6404e8 moved six jobs an hour
+# earlier: twelve lines of data here, sixty-six lines of hand-edited prose
+# across eight files — and it was still short, so ab59b83 had to follow the
+# same night. tests/test_schema.py guards config keys this way; nothing guarded
+# these.
+
+_CLOCK = re.compile(r"\b(\d{1,2}):(\d{2})\s*(AM|PM)\b")
+
+# docs/reviews/ is excluded by living outside docs/*.md — an old review quotes
+# the schedule that was true on its own date, and correcting that would be
+# rewriting history rather than fixing drift.
+_DOCS = [*sorted(Path("docs").glob("*.md")), Path("README.md")]
+
+
+def _prose(text: str) -> str:
+    """The document minus its fenced blocks.
+
+    A fence holds sample OUTPUT — a rendered page's "### Codex · ScribeJay ·
+    11:12 AM" — which is an illustration of a heading, not a claim about when
+    anything runs. Four such lines exist today and all four are inside fences,
+    so the fence is the line between "this is the schedule" and "this is what a
+    page looks like"."""
+    out, fenced = [], False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _registry_clock_times() -> set[str]:
+    return {f"{t.hour % 12 or 12}:{t.minute:02d} "
+            f"{'AM' if t.hour < 12 else 'PM'}" for t in registry.TASKS}
+
+
+def test_no_document_names_a_run_time_the_registry_does_not():
+    """Catches the failure that actually happened: a time nobody moved.
+
+    It does not prove a doc names the RIGHT task's time — two jobs ten minutes
+    apart could still be swapped and pass. That is deliberate: matching times to
+    tasks needs a parse of the prose around them, and the bug this exists for is
+    a stale number, not a mislabelled one."""
+    valid = _registry_clock_times()
+    for doc in _DOCS:
+        for m in _CLOCK.finditer(_prose(doc.read_text(encoding="utf-8"))):
+            found = f"{m.group(1)}:{m.group(2)} {m.group(3)}"
+            assert found in valid, (
+                f"{doc}: {found} is not any task's run time. Either registry.py "
+                f"moved and this document did not, or this is an example that "
+                f"belongs inside a ``` fence.")
+
+
+def test_the_guard_actually_reads_the_documents():
+    """The other half. A typo in the glob, a rename of docs/, or a fence rule
+    that swallowed everything would leave the test above green over an empty
+    set — which is exactly how a drift guard rots without anyone noticing."""
+    found = sum(len(_CLOCK.findall(_prose(d.read_text(encoding="utf-8"))))
+                for d in _DOCS)
+    assert found >= 20, f"only {found} run times found across {len(_DOCS)} documents"

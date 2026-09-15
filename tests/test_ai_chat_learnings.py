@@ -198,3 +198,70 @@ def test_a_missing_drop_folder_prunes_nothing(stubbed, monkeypatch):
     be summarized a second time the day the folder appeared."""
     assert not ai.gemini_dir().exists()
     assert ai._prune_processed({"chatA.md": 1.0}) == {"chatA.md": 1.0}
+
+
+def _heading_lines(body: str) -> int:
+    """How many lines a renderer reads as a section heading. A "###" that is not
+    at the start of a line is not one, which is exactly what safe_label leaves
+    behind."""
+    return sum(1 for line in body.splitlines() if line.startswith("### "))
+
+
+# ---- the header's borrowed words ----
+#
+# AGENTS.md: "Anything a stranger chose goes through safe_label before it
+# reaches a file." A session's `slug` is written by a model from the
+# conversation's own content, which is the far side of that line. These assert
+# the structural property the guard buys — one `### ` line per chat — rather
+# than the absence of any particular character, because safe_label neutralizes
+# syntax and deliberately keeps the words.
+
+
+def test_a_slug_cannot_split_its_own_section(stubbed, monkeypatch):
+    """A newline in a slug would end the header early and promote the rest of
+    the model's summary into a second section wearing a title it chose."""
+    monkeypatch.setattr(ai, "fetch_claude_sessions",
+                        lambda *a, **k: [_session(slug="fix login\n### Injected")])
+    assert ai.main() == 0
+    body = stubbed["persists"][0]["content"]
+    # One line STARTS with "### ", which is the only thing a renderer reads as a
+    # heading. The injected words survive mid-line as plain text, and that is
+    # safe_label working as designed rather than a leak — see core/text.py.
+    assert _heading_lines(body) == 1
+    assert "fix login ### Injected" in body
+
+
+def test_a_slug_cannot_forge_a_link_in_the_header(stubbed, monkeypatch):
+    monkeypatch.setattr(
+        ai, "fetch_claude_sessions",
+        lambda *a, **k: [_session(slug="x](http://evil.example) [")])
+    assert ai.main() == 0
+    # The heading line, found rather than indexed: line 0 is the page's own
+    # "## AI Chat Learnings" title, and asserting on that would pass with the
+    # guard removed.
+    headings = [ln for ln in stubbed["persists"][0]["content"].splitlines()
+                if ln.startswith("### ")]
+    assert len(headings) == 1
+    assert "](" not in headings[0]
+
+
+def test_a_project_made_only_of_syntax_still_names_something(stubbed, monkeypatch):
+    """safe_label empties it, and "Claude ·  · 9:14 AM" reads as a bug rather
+    than as a chat whose folder had an odd name."""
+    session = {**_session(), "project": "[]`|"}
+    monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [session])
+    assert ai.main() == 0
+    assert "Claude · unknown ·" in stubbed["persists"][0]["content"]
+
+
+def test_a_gemini_filename_cannot_split_its_section(stubbed, monkeypatch):
+    """The drop folder is the user's own, but the name reaches a header the
+    same way a slug does — and a file named by whoever sent the chat is not
+    obviously his word."""
+    monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
+    monkeypatch.setattr(
+        ai, "fetch_gemini_chats",
+        lambda *a, **k: [{"name": "notes\n### Injected.md", "mtime": 1.0,
+                          "text": "User: hi"}])
+    assert ai.main() == 0
+    assert _heading_lines(stubbed["persists"][0]["content"]) == 1

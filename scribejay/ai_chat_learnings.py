@@ -31,6 +31,7 @@ from scribejay.core.dates import local_timezone, prior_day
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
 from scribejay.core.store import atomic_write_json, load_json, locked
+from scribejay.core.text import safe_label
 from scribejay.sinks.vault import persist_or_email
 from scribejay.sources.transcripts import (
     DEFAULT_MAX_CHARS,
@@ -93,9 +94,23 @@ def _has_real_content(text: str) -> bool:
 
 
 def _session_header(source: str, session: dict) -> str:
-    parts = [source, session["project"]]
+    """The `### ` line for one chat. Every borrowed field is neutralized.
+
+    `slug` is the one that needs it: it comes out of a Claude Code session
+    JSONL, written by a model from the conversation's own content, and
+    AGENTS.md puts model output that reaches a written file on the untrusted
+    side of the line. `project` is a directory name off this machine and
+    `source` is a literal, so neither is a stranger's word — they go through
+    anyway, because a rule that holds for two of three fields is a rule nobody
+    can check.
+
+    A newline is the live failure, not a forged link: one `\n` in any of these
+    splits this header and turns the model's summary below it into a section of
+    its own. safe_label collapses it. `or "unknown"` covers a `project` made
+    only of syntax, because a header of "Claude ·  · 9:14 AM" reads as a bug."""
+    parts = [source, safe_label(session["project"]) or "unknown"]
     if session["slug"]:
-        parts.append(session["slug"])
+        parts.append(safe_label(session["slug"]))
     parts.append(f"{session['started_at']:%-I:%M %p}")
     return " · ".join(parts)
 
@@ -172,7 +187,10 @@ def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) ->
         # Mark processed whether or not it was useful, so we never re-summarize it.
         newly_processed[chat["name"]] = chat["mtime"]
         if _has_real_content(summary):
-            sections.append(f"### Gemini · {Path(chat['name']).stem}\n{summary}")
+            # The filename is the user's own, but it reaches a header the same
+            # way a slug does, and _session_header's reasoning applies here too.
+            name = safe_label(Path(chat["name"]).stem) or "unknown"
+            sections.append(f"### Gemini · {name}\n{summary}")
 
     if newly_processed:
         with locked(STATE_PATH):
