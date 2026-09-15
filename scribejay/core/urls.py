@@ -3,9 +3,19 @@
 Started as a verbatim copy of LocalLLMAgent's tasks/_urls.py. It is no longer
 one: the scheme check there is the whole function, and the delimiter encoding
 below was added here after a review found that a scheme-clean url can still
-close its own Markdown link and forge a second one. **LocalLLMAgent has the
-same gap** — it renders links the same way — so the fix belongs there too, in
-that repo.
+close its own Markdown link and forge a second one.
+
+**That gap does not reach LocalLLMAgent, checked 2026-09-15.** Its four
+`safe_url` callers all render HTML — `morning_brief._game_html` and
+`_starred_repos_html`, `opportunity_digest._item_html` and `_triage_footer` —
+and each one writes the url as `html.escape(url)` inside a quoted `href`, which
+closes the attribute-breakout the same way this table closes the Markdown one.
+It builds no Markdown links at all; its only `](` is a regex in
+`agent/tools/evaluate_app.py` that strips them out of fetched text. So the
+scheme check really is the whole job there, and copying this table across would
+be a fix for a renderer that repo does not have. What would change that is a
+plain-text or Markdown emitter — a text alternative beside the digest's
+`MIMEText(body, "html")` — because `safe_url` alone would not cover it.
 
 The sibling of `scribejay/core/text.py`: `safe_url` guards the destination,
 `safe_label` guards the words around it. Import from here rather than copying.
