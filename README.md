@@ -149,9 +149,16 @@ they do yesterday, which is the only day they are for. The six that do:
 ⚠️ **`daily_correspondence` is the one task whose backfill destroys history.**
 It re-reads a live mailbox, so a rebuilt page carries only the mail still out
 of the Trash today — and the old page is overwritten, not merged. Use it for a
-day that never got written, never to refresh one that did. Every other task
-re-reads a local file that does not shrink, so their backfills are safe.
+day that never got written, never to refresh one that did.
 [docs/daily-correspondence.md](docs/daily-correspondence.md) has the detail.
+
+⚠️ **`claude_time_blocks` is safe to backfill only for a day it has never
+written.** Re-running it over a day that already holds generated
+`claude-time:` blocks can shift the block boundaries, and the dedup key cannot
+reconcile the old shape with the new one — so dry-run first.
+[docs/ai-session-time-blocks.md](docs/ai-session-time-blocks.md) has the
+detail. The remaining tasks re-read a local file that does not shrink, so their
+backfills are safe.
 
 `--dry-run` exists only on `claude_time_blocks`, `daily_chrome_learnings`
 and `daily_youtube_learnings`.
@@ -166,7 +173,10 @@ scribejay schedule remove
 ```
 
 The eight plists are **generated** from `scribejay/core/registry.py`, not
-committed — so re-run `install` after changing anything in settings.
+committed. A plist holds only the interpreter, the task name and the run time,
+and which plists exist follows the sources you have on — so re-run `install`
+after turning a source on or off. Every other setting is read at run time and
+needs nothing.
 
 ## From a source checkout
 
