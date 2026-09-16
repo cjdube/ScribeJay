@@ -112,8 +112,15 @@ proves the setting is being read.
 
 1. What zone does this API stamp in? Assume UTC until the docs say otherwise.
 2. Convert to local before any comparison, truncation, or grouping by day.
-3. Use `local_timezone()` — do not read `/etc/localtime` again.
-4. Return `""` (or `None`) for an unparseable stamp, and make sure no window matches it.
+3. Resolve the zone through `local_timezone()` — it is the seam a test pins,
+   so reading the host clock directly puts the code beyond a test's reach.
+4. Return `""` (or `None`) for an unparseable stamp, and make sure no window
+   matches it — then count the drops and log WARNING if there were any. A
+   source whose stamps all stopped parsing reads exactly like a quiet day,
+   which is the silent-shrink failure
+   [model-constraints.md](model-constraints.md) names for model output; a
+   source is no different. `_liked_local_date` predates this line and does not
+   count yet.
 5. Write the test with an evening timestamp and a pinned `TIMEZONE`.
 
 ## Related

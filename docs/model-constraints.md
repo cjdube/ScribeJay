@@ -13,10 +13,12 @@ The three share a shape worth naming up front: **the failure is invisible.** In
 every case the model returned something well-formed, the task exited 0, and no
 alert fired. Nothing looked wrong until someone went looking.
 
-## `think=False` for template-filling calls
+## Spend thinking tokens only where the model must reason
 
-**Rule:** pass `think=False` for any call that fills in a template — a
-classification, a score, a fixed output format. Pass `logger=` too.
+**Rule:** spend thinking tokens only where the model must reason past what the
+prompt already contains. A call that fills in a template — a classification, a
+score, a fixed output format — does not, so pass `think=False`. Pass `logger=`
+too.
 
 The model's thinking tokens come out of the same `num_predict` budget as its
 answer. A call that reasons too long doesn't return a truncated answer — it

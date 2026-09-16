@@ -262,8 +262,8 @@ correctly ignored all five, but each cost a fetch and a model call.
 The hosted fetcher bought four extra pages and one extra note, for 25 credits
 and 5.3x the wall clock. On every page checked its markdown still carried page
 furniture — share bars, newsletter pitches, related-article lists — and
-TechCrunch came back as a Cloudflare bot check. Set against
-AGENTS.md's "no paid SaaS dependencies for data", that is not a close call.
+TechCrunch came back as a Cloudflare bot check. Set against AGENTS.md's "data
+capture pays nothing and phones nobody", that is not a close call.
 
 **So it is gone.** `FIRECRAWL_API_KEY`, the backend chain, the quota handling
 and the bake-off harness were all removed once this was written down. The

@@ -162,8 +162,9 @@ with the same signature and canonical return shape as
 `_ollama_chat`/`_gemini_chat`/`_openrouter_chat`, and a branch in
 `model._llm_chat`. Add its rows to `core/schema.py` (the key with
 `secret=True`) and the new value to `SCRIBEJAY_LLM_BACKEND`'s `choices`, and
-an egress guard to `tests/conftest.py`. Translate messages/format inside the
-new function; don't touch the callers.
+an egress guard to `tests/conftest.py`. Every provider quirk stops inside its
+own `_<provider>_chat` — message shape, output format, the `think` translation
+— so that no caller can tell which backend answered.
 
 Most of the time you do not need to: OpenRouter already reaches the model,
 and a direct provider backend only earns its place when you need something
