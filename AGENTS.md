@@ -1,7 +1,8 @@
 # AGENTS.md
 
-**Canonical instructions:** This file is the sole source of project guidance.
-Keep `CLAUDE.md` as the import-only compatibility pointer `@AGENTS.md`.
+**Canonical instructions:** This file is the entry point for project
+guidance; the `docs/` pages it links carry the detail. Keep `CLAUDE.md` as the
+import-only compatibility pointer `@AGENTS.md`.
 
 ScribeJay is a local-first journaling agent: it keeps the record of what
 actually happened — Strava activities logged onto the calendar, yesterday's
@@ -119,8 +120,9 @@ Don't.
   data a service deliberately sends. Never scrape a site that prohibits it,
   and never route around it through scraping SaaS — a banned account costs
   more than the signal.
-- **No paid SaaS dependencies for data.** Prefer free/official sources. A
-  subscription contradicts the local-first design; flag it for discussion.
+- **Data capture pays nothing and phones nobody.** Free and official sources
+  only. A subscription contradicts the local-first design, so when the only
+  source costs money, raise it rather than building against it.
 - **If a signal has no legitimate source, say so** and drop or defer it —
   don't quietly substitute a gray-area source.
 - **A url the user visited is user data, not a public address.** Anything that
@@ -148,8 +150,9 @@ that writes files: a browsed page's title, a
 sent-mail subject, a commit message, a ClickUp task name all flow into a
 prompt whose output becomes a vault page or a calendar event. Keep the
 gather step compacting to plain fields (title, url, count) rather than
-passing raw page bodies, and never let a source's content control which
-file gets written or where.
+passing raw page bodies — that bounds the prompt, it does not make the text
+safe — and never let a source's content control which file gets written or
+where.
 
 **A model is not the only thing that renders untrusted text.** A subject line
 or a sender's display name goes straight from Gmail into a Markdown page the
@@ -163,7 +166,8 @@ stranger's punctuation.
 
 **A store is the same surface a day later.** Untrusted text written to a JSON
 store today is rendered tomorrow; nothing becomes trusted by having been saved
-once. Guard on the way out, not on the way in.
+once. Make text safe where it is written to a file; an earlier clean-up, at
+gather or on the way into a store, does not count as that guard.
 
 ## Small-local-model constraints
 
@@ -179,11 +183,12 @@ The default backend is a small on-device model; design around it:
   `from scribejay.core.urls import safe_url`, don't copy it. Its sibling
   `core/text.py:safe_label` does the same job for the words around the link;
   see the untrusted-content section above.
-- **Pass `think=False` for any call that fills in a template** — a
-  classification, a score, a fixed output format — and pass `logger=` with
-  it. Thinking tokens share the `num_predict` budget, so over-reasoning
-  returns *empty content*, not a truncated answer. Leave it on only where
-  the model must reason past the prompt, and measure even then.
+- **Spend thinking tokens only where the model must reason past the
+  prompt.** A call that fills in a template — a classification, a score, a
+  fixed output format — does not, so pass `think=False`, and pass `logger=`
+  with it so an empty answer surfaces. Thinking tokens share the
+  `num_predict` budget, so over-reasoning returns *empty content*, not a
+  truncated answer. Measure even where you leave it on.
   [docs/model-constraints.md](docs/model-constraints.md)
 - **Degrading on bad model output is only safe if it's logged.** If a parse
   yields *fewer* results than inputs — not just zero — log WARNING with the
@@ -199,9 +204,9 @@ The default backend is a small on-device model; design around it:
   `setup_logger` and `notify_failure` from `scribejay/core/logs.py`, plus a
   row in `scribejay/core/registry.py` — the launchd plist is **generated** from
   that row by `scribejay/cli/schedule.py`, so do not write one. Call
-  `registry.skip_if_disabled(...)`
-  immediately after the opening log line — **before any gather**, or a
-  declined source still gets read. **Log `Starting <name>
+  `registry.skip_if_disabled(...)` **before the first gather** — where it
+  sits in the file does not matter, but a declined source must never be
+  read. **Log `Starting <name>
   run` on entry and `<name> run complete` on every success path** (and
   `logger.error` on the failure path — `notify_failure` doesn't log): a
   federating dashboard builds run history from those lines, never from exit
