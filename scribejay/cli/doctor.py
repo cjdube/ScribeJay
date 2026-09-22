@@ -20,9 +20,13 @@ from a script or a selfheal job. WARN never fails the command: a user who has
 deliberately declined Strava must not get a non-zero exit for it, which is the
 same rule Phase 3 applied to push alerts.
 
-**Nothing here writes.** A health check that repaired things would hide the
-fault it was run to explain, and a user is entitled to see the broken state
-before anything changes it. `--probe` is the one flag that reaches the
+**Nothing here repairs, and nothing here touches your data.** A health check
+that fixed things would hide the fault it was run to explain, and a user is
+entitled to see the broken state before anything changes it. There is exactly
+one write in the whole command, and it is named so the rule stays checkable:
+`_folder()` touches and immediately deletes a `.scribejay-write-test` probe,
+because a writability check that does not attempt a write is not a check.
+`--probe` is the one flag that reaches the
 network, and even then it only reads: it calls the same fetchers a 4:30 run
 calls, through `settings_form.test_feature`, so "0 rows" here means "0 rows
 tomorrow morning". `notify` is excluded from probing on purpose — testing it

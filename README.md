@@ -59,8 +59,12 @@ Each job is `gather (Python) -> model -> write` — see
 The model writes short blurbs and classifications; Python owns every date, URL
 and file structure.
 
-The middle step varies, and the ends are what define the shape. Four jobs make
-one call. `ai_chat_learnings` makes one per chat and `claude_time_blocks` one
+The middle step varies, and the ends are what define the shape. Three jobs make
+one call. `daily_chrome_learnings` makes one draft plus one more per page it
+fetches when web fetch is on ([docs/web-fetch.md](docs/web-fetch.md)), and one
+in total when it is off — which is the default, and the only count that scales
+with a day's browsing rather than with a fixed number of jobs.
+`ai_chat_learnings` makes one per chat and `claude_time_blocks` one
 per block, each small and bounded. `strava_download` and `daily_correspondence`
 make **none at all** — an activity's fields and a mail header need no
 sentence written about them, and asking for one would only invent detail the
