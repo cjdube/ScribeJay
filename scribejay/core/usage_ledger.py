@@ -21,7 +21,9 @@ Two properties this file must keep:
     `record()` swallows everything — a lost row is strictly better than a lost
     day's page.
   * It never grows without bound. It is written on every single model call, so
-    it prunes itself on write (see `_prune_if_large`).
+    it prunes itself on write (see `_prune_if_large`). A prune that cannot
+    finish logs WARNING and gives up, because a bound nobody can check is not
+    a bound — the row is still cheap to lose, the promise is not.
 
 Deliberately `.jsonl`, not `.log`: `logs/*.log` in .gitignore would then cover
 it by accident rather than on purpose, and a machine-readable ledger has no
@@ -140,22 +142,31 @@ def _prune_if_large(path: Path) -> None:
     except OSError:
         return
     cutoff = (datetime.now() - timedelta(days=_retention_days())).isoformat()
-    kept = []
-    with path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            # A row whose ts is missing or unreadable is kept: the point of the
-            # prune is to shed old rows, and "I can't tell how old this is" is
-            # not evidence that it is old.
-            try:
-                ts = json.loads(line).get("ts") or ""
-            except ValueError:
-                kept.append(line)
-                continue
-            if not ts or ts >= cutoff:
-                kept.append(line)
-    tmp = path.with_suffix(".jsonl.tmp")
-    tmp.write_text("".join(kept), encoding="utf-8")
-    tmp.replace(path)
+    try:
+        kept = []
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                # A row whose ts is missing or unreadable is kept: the point of
+                # the prune is to shed old rows, and "I can't tell how old this
+                # is" is not evidence that it is old.
+                try:
+                    ts = json.loads(line).get("ts") or ""
+                except ValueError:
+                    kept.append(line)
+                    continue
+                if not ts or ts >= cutoff:
+                    kept.append(line)
+        tmp = path.with_suffix(".jsonl.tmp")
+        tmp.write_text("".join(kept), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as e:
+        # WARNING, unlike record()'s catch-all below. That one is DEBUG because
+        # it fires on every model call if it fires at all; this fires only once
+        # the file is ALREADY over its limit, so it is rare by construction and
+        # cannot drown the log. Without it the module's "never grows without
+        # bound" promise is one nothing can check: the ledger simply keeps
+        # growing, and the tool that reads it finds out instead.
+        logger.warning("could not prune the usage ledger at %s: %s", path, e)
 
 
 def record(

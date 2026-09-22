@@ -7,6 +7,7 @@ test), so nothing here writes into the real logs/ directory."""
 import json
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -140,6 +141,23 @@ def test_prune_drops_rows_past_the_retention_window(monkeypatch):
     usage_ledger.record("fresh", "ollama", "m")
 
     assert [r["task"] for r in _rows()] == ["recent", "fresh"]
+
+
+def test_a_prune_that_cannot_finish_says_so(monkeypatch, caplog):
+    """The module promises the file never grows without bound. If the rewrite
+    fails and nobody is told, that promise is unenforced AND unobservable —
+    the ledger just keeps growing and the tool that reads it finds out."""
+    monkeypatch.setenv("SCRIBEJAY_USAGE_MAX_BYTES", "1")
+    _write_rows([{"ts": datetime.now().isoformat(timespec="seconds"), "task": "a"}])
+
+    def _no_space(*a, **k):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(Path, "replace", _no_space)
+
+    with caplog.at_level("WARNING", logger=usage_ledger.logger.name):
+        usage_ledger.record("fresh", "ollama", "m")
+
+    assert "could not prune the usage ledger" in caplog.text
 
 
 def test_a_row_of_unknown_age_is_kept(monkeypatch):
