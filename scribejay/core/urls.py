@@ -1,4 +1,9 @@
-"""URL guards shared by everything that renders an externally-sourced link.
+"""URL guards shared by everything that handles an externally-sourced link.
+
+Two jobs, not one. `safe_url` guards a url on its way INTO a file, so a
+remote page cannot forge a second link out of the one it was given.
+`is_private_host` guards a url on its way OUT, so a page the user visited
+cannot point the fetcher back at this machine.
 
 Started as a verbatim copy of LocalLLMAgent's tasks/_urls.py. It is no longer
 one: the scheme check there is the whole function, and the delimiter encoding
@@ -78,3 +83,36 @@ def safe_url(url: str) -> str:
     for char, encoded in _LINK_DELIMITERS.items():
         url = url.replace(char, encoded)
     return url
+
+
+# Hosts that are this machine or its network. Nothing here is a page the user
+# "read about"; several are dev servers whose content is the user's own work.
+_PRIVATE_HOST_PREFIXES = ("127.", "10.", "192.168.", "169.254.", "0.")
+
+
+def is_private_host(host: str) -> bool:
+    """True if this host is this machine or its own network.
+
+    Lives here rather than beside its first caller because it now has two, and
+    they guard different moments: `activity.py:candidate_urls` screens the url
+    the user VISITED, and `sources/web_fetch.py` screens where that url
+    actually LANDED after redirects. A second copy would let the two drift, and
+    the half that drifted would be the one nobody reads.
+
+    An empty or unparseable host is private. That is the fail-closed answer,
+    and it costs at most one page: a host nothing can identify is not one worth
+    sending a request to, or reading a body from.
+    """
+    host = (host or "").lower().split(":")[0]
+    if not host or host in ("localhost", "::1") or host.endswith(".local"):
+        return True
+    if host.startswith(_PRIVATE_HOST_PREFIXES):
+        return True
+    # 172.16.0.0/12 — the one private range a string prefix cannot express.
+    parts = host.split(".")
+    if len(parts) == 4 and parts[0] == "172":
+        try:
+            return 16 <= int(parts[1]) <= 31
+        except ValueError:
+            return False
+    return False

@@ -34,13 +34,14 @@ import logging
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 import requests
 
 from scribejay.core import config
 from scribejay.core.http import http_error, print_result
 from scribejay.core.store import atomic_write_json, load_json, locked
-from scribejay.core.urls import safe_url
+from scribejay.core.urls import is_private_host, safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,33 @@ def _extract(html: str, url: str) -> tuple[str, str]:
     return title, text
 
 
+def _private_hop(response) -> str:
+    """The first private host this response passed through, or "".
+
+    `fetch_page` checks the url it is handed, and `activity.py:candidate_urls`
+    checked it before that — but both check the url the user VISITED. A public
+    page is free to answer with a 302 to 127.0.0.1, or to the cloud metadata
+    address at 169.254.169.254, and following one unchecked would read a
+    machine-local page into the vault as if the user had browsed it. The
+    redirect steps around every other gate as well: the domain exclusions, the
+    session-path rule and the published-path allow list all ran against the
+    original url, and none of them runs again.
+
+    Redirects stay ON. Ordinary http-to-https and trailing-slash hops are most
+    of the redirects a real history contains, and refusing them would cost
+    pages for nothing — where a url LANDS is what matters, and that is what is
+    checked here.
+
+    Every hop is tested, not just the last one. A chain that passes through a
+    private host and back out again has still made the request that matters.
+    """
+    for hop in list(getattr(response, "history", None) or []) + [response]:
+        host = urlparse(getattr(hop, "url", "") or "").hostname or ""
+        if is_private_host(host):
+            return host or "an unidentifiable host"
+    return ""
+
+
 def fetch_local(url: str, timeout: float) -> dict:
     """Fetch and extract from this machine. `{"title","text"}` or an error."""
     try:
@@ -148,6 +176,15 @@ def fetch_local(url: str, timeout: float) -> dict:
             headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
             stream=True,
         ) as response:
+            # Before the body is touched, and before anything else is decided
+            # about this response: a redirect is the one way a url that passed
+            # every check can still end up somewhere private.
+            landed = _private_hop(response)
+            if landed:
+                logger.warning("web fetch refused %s — it redirected to the "
+                               "private host %s", url, landed)
+                return {"error": f"redirected to a private host: {landed}"}
+
             if response.status_code in (401, 403, 407, 429, 451):
                 # A refusal. Recorded and dropped — never retried by another route.
                 return {"error": f"blocked: HTTP {response.status_code}"}

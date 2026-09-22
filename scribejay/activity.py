@@ -14,7 +14,7 @@ import re
 from urllib.parse import urlparse, urlunparse
 
 from scribejay.core import config
-from scribejay.core.urls import safe_url
+from scribejay.core.urls import is_private_host, safe_url
 
 # Prompt-bounding caps. Daily volume is much smaller than a weekly run, so
 # these rarely bind — but they keep a heavy browsing day (or a link-dump video
@@ -120,27 +120,6 @@ _BINARY_SUFFIXES = (
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
     ".mp4", ".mp3", ".mov", ".wav", ".csv", ".xlsx", ".doc", ".docx",
 )
-
-# Hosts that are this machine or its network. Nothing here is a page the user
-# "read about"; several are dev servers whose content is the user's own work.
-_PRIVATE_HOST_PREFIXES = ("127.", "10.", "192.168.", "169.254.", "0.")
-
-
-def _is_private_host(host: str) -> bool:
-    host = (host or "").lower().split(":")[0]
-    if not host or host in ("localhost", "::1") or host.endswith(".local"):
-        return True
-    if host.startswith(_PRIVATE_HOST_PREFIXES):
-        return True
-    # 172.16.0.0/12 — the one private range a string prefix cannot express.
-    parts = host.split(".")
-    if len(parts) == 4 and parts[0] == "172":
-        try:
-            return 16 <= int(parts[1]) <= 31
-        except ValueError:
-            return False
-    return False
-
 
 # Path shapes that mean "somebody published this", used as an allow list.
 #
@@ -284,7 +263,7 @@ def candidate_urls(sites: list, limit: int) -> list[dict]:
             path, url = page.get("path") or "", safe_url(page.get("url") or "")
             if not url or not path or is_excluded_text(path):
                 continue
-            if _is_private_host(urlparse(url).hostname or ""):
+            if is_private_host(urlparse(url).hostname or ""):
                 continue
             lowered = path.lower()
             if _is_session_path(lowered):

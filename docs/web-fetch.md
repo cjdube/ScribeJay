@@ -43,7 +43,8 @@ measured cost of that is in "the picker was the bug" below.
 **Rejected before the allow list even runs:** anything the learnings exclusions
 already reject (domain, title or path); non-`http(s)` URLs, via
 `core/urls.py:safe_url`; private and local hosts (`localhost`, `127.*`, `10.*`,
-`192.168.*`, `172.16–31.*`, `*.local`); session and account paths (`/login`,
+`192.168.*`, `172.16–31.*`, `*.local`), via `core/urls.py:is_private_host`;
+session and account paths (`/login`,
 `/reset-password`, `/checkout` …), matched on path *tokens* so `/descartes` is
 not read as a cart; and file extensions that are not readable text (`.pdf`,
 `.zip`, `.png`, `.mp4` …).
@@ -55,6 +56,19 @@ list answers a privacy question, where failing open is unacceptable, and this
 answers a relevance one, where failing open costs a fetch and a model call.
 They are not the same test — "rigatoni-with-marinated-tomatoes-and-burrata" is
 published writing by every measure `_looks_published` applies.
+
+**The private-host rule is applied twice, and the second time is the one that
+matters.** Every check above runs against the url the user *visited*. A
+redirect is chosen by the remote page, so a url that passed all of them can
+still land somewhere private — `127.0.0.1`, an RFC1918 address, or the cloud
+metadata endpoint at `169.254.169.254` — and a page read that way would reach
+the vault as if the user had browsed it. So `sources/web_fetch.py:_private_hop`
+re-tests the response's final url *and every hop in `response.history`* before
+a single byte of the body is read, and a refusal is logged at WARNING so a
+dropped page can be told apart from one that was never worth fetching.
+Redirects themselves stay enabled: `http`→`https` and trailing-slash hops are
+most of what a real history contains, and where a url *lands* is the thing
+worth checking.
 
 **The query string never leaves.** `_fetch_url` sends scheme, host and path
 only. An article renders the same without `?utm_source=`, and the query string
