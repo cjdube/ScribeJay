@@ -87,6 +87,39 @@ def test_gemini_chat_summarized_and_marked_processed(stubbed, monkeypatch):
     assert state["gemini_processed"]["chatA.md"] == 123.0  # won't be re-summarized next run
 
 
+def test_a_failed_persist_leaves_the_gemini_chats_unprocessed(stubbed, monkeypatch):
+    """The watermark is the only thing standing between a failed write and
+    permanent loss. persist_or_email raises when the vault write AND the email
+    fallback both fail, so if the watermark were already down those chats would
+    never be looked at again — the drop files are still there, but every later
+    run skips them on name and mtime."""
+    monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
+    monkeypatch.setattr(ai, "fetch_gemini_chats",
+                        lambda processed, max_chars: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
+
+    def _both_sinks_failed(*a, **k):
+        raise RuntimeError("vault write AND email fallback both failed")
+    monkeypatch.setattr(ai, "persist_or_email", _both_sinks_failed)
+
+    assert ai.main() == 1
+    assert "chatA.md" not in load_json(ai.STATE_PATH, {}).get("gemini_processed", {})
+
+
+def test_a_chat_the_model_found_nothing_in_is_still_marked_processed(stubbed, monkeypatch):
+    """The other half of the rule. Nothing is written, so nothing can fail
+    after this point — and re-summarizing an empty chat every morning forever
+    is exactly what the watermark exists to stop."""
+    monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
+    monkeypatch.setattr(ai, "fetch_gemini_chats",
+                        lambda processed, max_chars: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
+    monkeypatch.setattr(ai, "complete_text",
+                        lambda **k: "**Accomplished**\n- None\n**Learned**\n- None")
+
+    assert ai.main() == 0
+    assert stubbed["persists"] == []
+    assert load_json(ai.STATE_PATH, {})["gemini_processed"]["chatA.md"] == 123.0
+
+
 def test_backfill_runs_each_day_and_skips_gemini(stubbed, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["ai_chat_learnings", "--backfill", "3"])
     monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])

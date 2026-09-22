@@ -151,6 +151,31 @@ def _prune_processed(processed: dict) -> dict:
     return {name: mtime for name, mtime in processed.items() if name in present}
 
 
+def _mark_processed(newly_processed: dict) -> None:
+    """Write the Gemini watermark. Call this only once the day is safely out.
+
+    The watermark is what stops a re-run re-summarizing a drop file, so writing
+    it before the page is persisted turns any persist failure into permanent
+    loss: `persist_or_email` raises when both the vault write AND the email
+    fallback fail, and these chats are marked done by then, so no later run
+    will ever look at them again.
+
+    The single-sink failure is the likelier one and loses something too. If the
+    vault write fails but the email gets through, the content reached the user
+    — but the page was never written, and a watermark set here would stop a
+    later run from rebuilding it. Fixing the folder and re-running would then
+    produce a page with the Claude and Codex sections and a silent hole where
+    the Gemini ones were.
+    """
+    if not newly_processed:
+        return
+    with locked(STATE_PATH):
+        state = load_json(STATE_PATH, {"gemini_processed": {}})
+        merged = {**state.get("gemini_processed", {}), **newly_processed}
+        state["gemini_processed"] = _prune_processed(merged)
+        atomic_write_json(STATE_PATH, state)
+
+
 def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) -> None:
     """Build and persist one day's file. include_gemini is False for backfill
     runs (the drop folder has no reliable per-day dates, so it's only folded into
@@ -192,15 +217,12 @@ def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) ->
             name = safe_label(Path(chat["name"]).stem) or "unknown"
             sections.append(f"### Gemini · {name}\n{summary}")
 
-    if newly_processed:
-        with locked(STATE_PATH):
-            state = load_json(STATE_PATH, {"gemini_processed": {}})
-            merged = {**state.get("gemini_processed", {}), **newly_processed}
-            state["gemini_processed"] = _prune_processed(merged)
-            atomic_write_json(STATE_PATH, state)
-
     if not sections:
         logger.info(f"No substantive chat summaries for {day}; nothing to write")
+        # Nothing to persist, so nothing can fail after this — and a chat the
+        # model found nothing in is still done with. Marking it here is what
+        # stops it being re-summarized every morning forever.
+        _mark_processed(newly_processed)
         return
 
     body = f"## AI Chat Learnings: {day:%B %-d, %Y}\n\n" + "\n\n".join(sections) + "\n"
@@ -209,6 +231,10 @@ def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) ->
         subject=f"AI Chat Learnings (needs manual paste) - {day:%Y-%m-%d}",
         task_name="ai_chat_learnings", logger=logger,
     )
+    # After, never before. persist_or_email raises when it cannot deliver at
+    # all, and letting that skip the watermark is the whole point: those chats
+    # stay unprocessed and tomorrow's run picks them up again.
+    _mark_processed(newly_processed)
 
 
 def main() -> int:
