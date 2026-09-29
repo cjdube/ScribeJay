@@ -42,8 +42,10 @@ measured cost of that is in "the picker was the bug" below.
 
 **Rejected before the allow list even runs:** anything the learnings exclusions
 already reject (domain, title or path); non-`http(s)` URLs, via
-`core/urls.py:safe_url`; private and local hosts (`localhost`, `127.*`, `10.*`,
-`192.168.*`, `172.16–31.*`, `*.local`), via `core/urls.py:is_private_host`;
+`core/urls.py:safe_url`; private and local hosts (`localhost`, `*.localhost`,
+`*.local`, and any address that is not globally routable — `127.*`, `10.*`,
+`192.168.*`, `172.16–31.*`, `169.254.*`, `100.64/10`, IPv6 link-local and
+unique-local), via `core/urls.py:is_private_host`;
 session and account paths (`/login`,
 `/reset-password`, `/checkout` …), matched on path *tokens* so `/descartes` is
 not read as a cart; and file extensions that are not readable text (`.pdf`,
@@ -57,18 +59,33 @@ answers a relevance one, where failing open costs a fetch and a model call.
 They are not the same test — "rigatoni-with-marinated-tomatoes-and-burrata" is
 published writing by every measure `_looks_published` applies.
 
-**The private-host rule is applied twice, and the second time is the one that
-matters.** Every check above runs against the url the user *visited*. A
-redirect is chosen by the remote page, so a url that passed all of them can
-still land somewhere private — `127.0.0.1`, an RFC1918 address, or the cloud
-metadata endpoint at `169.254.169.254` — and a page read that way would reach
-the vault as if the user had browsed it. So `sources/web_fetch.py:_private_hop`
-re-tests the response's final url *and every hop in `response.history`* before
-a single byte of the body is read, and a refusal is logged at WARNING so a
-dropped page can be told apart from one that was never worth fetching.
-Redirects themselves stay enabled: `http`→`https` and trailing-slash hops are
-most of what a real history contains, and where a url *lands* is the thing
-worth checking.
+**The private-host rule is applied again before every request, and that is the
+check that matters.** Every check above runs against the url the user
+*visited*. A redirect is chosen by the remote page, so a url that passed all of
+them can still point somewhere private — `127.0.0.1`, an RFC1918 address, or
+the cloud metadata endpoint at `169.254.169.254` — and a page read that way
+would reach the vault as if the user had browsed it. The remote page picks the
+*spelling* too: `2130706433`, `0x7f000001`, `localhost.`, `[fe80::1]` and a
+public name with an A record of `10.0.0.5` all mean a private address, and none
+of them looks like one.
+
+So `sources/web_fetch.py:fetch_local` follows redirects itself, one hop at a
+time, with `allow_redirects=False` on every `requests.get`. Before each request
+— the first one included — `_private_target` judges the host by shape through
+`core/urls.py:is_private_host`, which reads an address as an address however it
+is spelled and decides with the stdlib's `ipaddress.is_global`; then it
+resolves the name and refuses if **any** address it gets back is private, or if
+the name does not resolve. A refused url is never requested, so a dev server on
+this Mac never sees the GET, not just the vault never seeing its body. A refusal
+is logged at WARNING, so a dropped page can be told apart from one that was
+never worth fetching. Ordinary `http`→`https` and trailing-slash hops are still
+followed — at most five, and only to `http(s)`.
+
+One gap is left open on purpose. The name is resolved for the check and then
+again by `requests` a moment later, and a DNS server that answers differently
+the second time (DNS rebinding) gets past it. Closing that means pinning the
+connection to the address that was checked, which takes a custom transport
+adapter — out of proportion for a feature that is off by default.
 
 **The query string never leaves.** `_fetch_url` sends scheme, host and path
 only. An article renders the same without `?utm_source=`, and the query string

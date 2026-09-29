@@ -24,6 +24,9 @@ _REAL_FETCH_LOCAL = wf.fetch_local
 @pytest.fixture
 def real_local(monkeypatch):
     monkeypatch.setattr(wf, "fetch_local", _REAL_FETCH_LOCAL)
+    # The suite makes no DNS lookups. Every name is public unless a test
+    # answers _resolve itself.
+    monkeypatch.setattr(wf, "_resolve", lambda host: {"93.184.215.14"})
 
 
 def _ok(text="x" * 1000, title="A Title"):
@@ -81,18 +84,11 @@ def test_a_page_just_over_the_line_is_kept(monkeypatch):
 # ---- refusals ---------------------------------------------------------------
 
 class _Response:
-    def __init__(self, status=200, headers=None, body=b"",
-                 url="https://example.com/a", history=()):
+    def __init__(self, status=200, headers=None, body=b""):
         self.status_code = status
         self.headers = headers or {"Content-Type": "text/html"}
         self._body = body
         self.encoding = "utf-8"
-        # Where the request LANDED, and the hops it took to get there — what
-        # requests itself exposes after following a redirect. Both carry a
-        # public default so every other test in this file describes an ordinary
-        # fetch rather than accidentally describing a redirect.
-        self.url = url
-        self.history = list(history)
 
     def __enter__(self):
         return self
@@ -131,77 +127,125 @@ def test_a_network_error_becomes_an_error_dict_not_an_exception(monkeypatch, rea
     assert "error" in wf.fetch_local("https://example.com/a", timeout=5)
 
 
-# ---- where the request landed -----------------------------------------------
+# ---- where the request lands -----------------------------------------------
 #
 # Every other guard in the pipeline runs against the url the user VISITED.
-# These are about the url the request ENDED at, which is the only one a remote
-# page gets to choose.
+# These are about the urls a redirect points at, which a remote page chooses —
+# spelling included.
 
-@pytest.mark.parametrize("landed", [
+_PAGE = b"<html><body>" + b"word " * 400 + b"</body></html>"
+
+
+def _route(monkeypatch, pages):
+    """requests.get answering by url. Returns the list of urls actually
+    requested, which is what the guard exists to keep short."""
+    sent = []
+
+    def _get(url, **kwargs):
+        # The whole fix rests on this: with requests following redirects, every
+        # hop is requested before the guard can see it.
+        assert kwargs.get("allow_redirects") is False
+        sent.append(url)
+        return pages[url]
+
+    monkeypatch.setattr(wf.requests, "get", _get)
+    return sent
+
+
+def _redirect(to, status=302):
+    return _Response(status=status, headers={"Location": to})
+
+
+@pytest.mark.parametrize("target", [
     "http://127.0.0.1:8420/dashboard",
     "http://169.254.169.254/latest/meta-data/",
     "http://192.168.1.10/admin",
     "http://10.0.0.5/",
     "http://172.20.1.1/",
+    "http://100.64.0.1/",
     "http://mymac.local/notes",
     "http://localhost/secret",
+    # The same places, spelled the way a redirect gets to spell them.
+    "http://2130706433/",
+    "http://0x7f000001/",
+    "http://localhost./secret",
+    "http://[::1]/",
+    "http://[fe80::1]/",
+    "http://[fd00::1]/",
+    "http://[::ffff:127.0.0.1]/",
 ])
-def test_a_redirect_to_a_private_host_is_refused(monkeypatch, real_local, landed):
-    """A public page answers with a 302 to this machine. Following it would
-    read a dev server, or the cloud metadata endpoint, into the vault as if the
-    user had browsed it."""
-    monkeypatch.setattr(wf.requests, "get", lambda *a, **k: _Response(
-        body=b"<html><body>internal</body></html>", url=landed,
-        history=[_Response(status=302, url="https://good.example/post")]))
+def test_a_redirect_to_a_private_host_is_never_requested(monkeypatch, real_local, target):
+    """A public page answers with a 302 to this machine. The body must not
+    reach the vault — and the GET must not reach the dev server either."""
+    sent = _route(monkeypatch, {"https://good.example/post": _redirect(target)})
     result = wf.fetch_local("https://good.example/post", timeout=5)
     assert "redirected to a private host" in result["error"]
-    assert "text" not in result
+    assert sent == ["https://good.example/post"]
 
 
-def test_a_private_host_anywhere_in_the_chain_is_refused(monkeypatch, real_local):
-    """The chain ends somewhere public, but the request to the private host was
-    still made. Checking only the final url would miss it."""
-    monkeypatch.setattr(wf.requests, "get", lambda *a, **k: _Response(
-        body=b"<html><body>hi</body></html>",
-        url="https://good.example/finally",
-        history=[_Response(status=302, url="https://good.example/post"),
-                 _Response(status=302, url="http://127.0.0.1/hop")]))
+def test_a_public_name_that_resolves_private_is_refused(monkeypatch, real_local):
+    """No spelling rule can catch this one: the name is ordinary, and only DNS
+    knows it points at 10.0.0.5."""
+    monkeypatch.setattr(wf, "_resolve", lambda host: (
+        {"10.0.0.5"} if host == "sneaky.example" else {"93.184.215.14"}))
+    sent = _route(monkeypatch, {
+        "https://good.example/post": _redirect("http://sneaky.example/")})
+    assert "10.0.0.5" in wf.fetch_local("https://good.example/post", timeout=5)["error"]
+    assert sent == ["https://good.example/post"]
+
+
+def test_one_private_address_among_public_ones_is_enough_to_refuse(monkeypatch, real_local):
+    monkeypatch.setattr(wf, "_resolve", lambda host: {"93.184.215.14", "127.0.0.1"})
+    sent = _route(monkeypatch, {})
     assert "127.0.0.1" in wf.fetch_local("https://good.example/post", timeout=5)["error"]
+    assert sent == []
+
+
+def test_a_name_that_does_not_resolve_is_refused(monkeypatch, real_local):
+    """Fail closed. The request would fail anyway."""
+    def _nxdomain(host):
+        raise OSError("nodename nor servname provided")
+    monkeypatch.setattr(wf, "_resolve", _nxdomain)
+    sent = _route(monkeypatch, {})
+    assert "does not resolve" in wf.fetch_local("https://good.example/post", timeout=5)["error"]
+    assert sent == []
 
 
 def test_a_refused_redirect_is_logged(monkeypatch, real_local, caplog):
     """A silently dropped page reads exactly like a page that was never worth
     fetching. The operator needs to be able to tell those apart."""
-    monkeypatch.setattr(wf.requests, "get", lambda *a, **k: _Response(
-        url="http://127.0.0.1/x",
-        history=[_Response(status=302, url="https://good.example/post")]))
+    _route(monkeypatch, {"https://good.example/post": _redirect("http://127.0.0.1/x")})
     with caplog.at_level("WARNING", logger=wf.logger.name):
         wf.fetch_local("https://good.example/post", timeout=5)
     assert "127.0.0.1" in caplog.text
 
 
-def test_a_response_with_no_url_is_refused(monkeypatch, real_local):
-    """Fail closed. A host nothing can identify is not one to read a body
-    from, and the cost of being wrong is a single page.
-
-    The body is deliberately a full, readable page: with an empty one this
-    passes whether the guard runs or not, because "no readable text extracted"
-    is also an error."""
-    monkeypatch.setattr(wf.requests, "get", lambda *a, **k: _Response(
-        body=b"<html><body>" + b"word " * 400 + b"</body></html>", url=""))
-    result = wf.fetch_local("https://good.example/post", timeout=5)
-    assert "redirected to a private host" in result["error"]
-
-
 def test_an_ordinary_redirect_is_still_followed(monkeypatch, real_local):
     """http to https, and a trailing slash, are most of the redirects a real
-    browsing history contains. The guard is about where a url lands, not about
-    refusing to follow one."""
-    monkeypatch.setattr(wf.requests, "get", lambda *a, **k: _Response(
-        body=b"<html><body>" + b"word " * 400 + b"</body></html>",
-        url="https://good.example/post/",
-        history=[_Response(status=301, url="http://good.example/post")]))
+    browsing history contains. A relative Location is resolved against the
+    url that sent it."""
+    sent = _route(monkeypatch, {
+        "http://good.example/post": _redirect("https://good.example/post", 301),
+        "https://good.example/post": _redirect("/post/", 308),
+        "https://good.example/post/": _Response(body=_PAGE),
+    })
     assert "error" not in wf.fetch_local("http://good.example/post", timeout=5)
+    assert sent == ["http://good.example/post", "https://good.example/post",
+                    "https://good.example/post/"]
+
+
+def test_a_redirect_to_another_scheme_is_refused(monkeypatch, real_local):
+    _route(monkeypatch, {"https://good.example/post": _redirect("file:///etc/passwd")})
+    assert "non-http" in wf.fetch_local("https://good.example/post", timeout=5)["error"]
+
+
+def test_a_redirect_loop_stops(monkeypatch, real_local):
+    sent = _route(monkeypatch, {
+        "https://good.example/a": _redirect("https://good.example/b"),
+        "https://good.example/b": _redirect("https://good.example/a"),
+    })
+    assert "redirects" in wf.fetch_local("https://good.example/a", timeout=5)["error"]
+    assert len(sent) == wf.MAX_REDIRECTS + 1
 
 
 # ---- many pages -------------------------------------------------------------

@@ -30,18 +30,20 @@ Usage:
 """
 
 import argparse
+import ipaddress
 import logging
+import socket
 import sys
 import time
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 from scribejay.core import config
 from scribejay.core.http import http_error, print_result
 from scribejay.core.store import atomic_write_json, load_json, locked
-from scribejay.core.urls import is_private_host, safe_url
+from scribejay.core.urls import is_private_address, is_private_host, safe_url
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,11 @@ MAX_RESPONSE_BYTES = 3_000_000
 # Plain and honest. Not a browser string chosen to look like something else —
 # see the module docstring on blocks.
 USER_AGENT = "ScribeJay/1.0 (personal journaling agent; +https://github.com/cjdube/ScribeJay)"
+
+# Enough for http->https->www->trailing-slash with room to spare. A chain
+# longer than this is a loop or a tracker, not an article.
+MAX_REDIRECTS = 5
+_REDIRECTS = (301, 302, 303, 307, 308)
 
 CACHE_NAME = "web_fetch_cache.json"
 CACHE_TTL_DAYS = 14
@@ -137,70 +144,104 @@ def _extract(html: str, url: str) -> tuple[str, str]:
     return title, text
 
 
-def _private_hop(response) -> str:
-    """The first private host this response passed through, or "".
+def _resolve(host: str) -> set[str]:
+    """Every address this host resolves to. Its own function so tests can
+    answer it — the suite makes no DNS lookups."""
+    return {info[4][0] for info in socket.getaddrinfo(host, None)}
 
-    `fetch_page` checks the url it is handed, and `activity.py:candidate_urls`
-    checked it before that — but both check the url the user VISITED. A public
-    page is free to answer with a 302 to 127.0.0.1, or to the cloud metadata
-    address at 169.254.169.254, and following one unchecked would read a
-    machine-local page into the vault as if the user had browsed it. The
-    redirect steps around every other gate as well: the domain exclusions, the
-    session-path rule and the published-path allow list all ran against the
-    original url, and none of them runs again.
 
-    Redirects stay ON. Ordinary http-to-https and trailing-slash hops are most
-    of the redirects a real history contains, and refusing them would cost
-    pages for nothing — where a url LANDS is what matters, and that is what is
-    checked here.
+def _private_target(url: str) -> str:
+    """The private host or address this url would reach, or "".
 
-    Every hop is tested, not just the last one. A chain that passes through a
-    private host and back out again has still made the request that matters.
+    Asked before every request, the first one included. `activity.py`
+    checked the url the user VISITED, but a public page is free to answer
+    with a 302 to 127.0.0.1, or to the metadata address at 169.254.169.254,
+    and a redirect gets to pick the spelling: `2130706433`, `[fe80::1]`, or a
+    public name with an A record of 10.0.0.5. So the host is judged by shape
+    first and then by what it resolves to, and ANY private answer refuses — a
+    name with one public and one private address is a name that can be made
+    to pick the private one.
+
+    A name that does not resolve refuses too. The request would fail anyway,
+    and fail-closed costs nothing here.
     """
-    for hop in list(getattr(response, "history", None) or []) + [response]:
-        host = urlparse(getattr(hop, "url", "") or "").hostname or ""
-        if is_private_host(host):
-            return host or "an unidentifiable host"
+    host = urlparse(url).hostname or ""
+    if is_private_host(host):
+        return host or "an unidentifiable host"
+    try:
+        addresses = _resolve(host)
+    except OSError:
+        return f"{host} (does not resolve)"
+    for address in sorted(addresses):
+        if is_private_address(ipaddress.ip_address(address.split("%")[0])):
+            return f"{host} ({address})"
     return ""
 
 
 def fetch_local(url: str, timeout: float) -> dict:
-    """Fetch and extract from this machine. `{"title","text"}` or an error."""
+    """Fetch and extract from this machine. `{"title","text"}` or an error.
+
+    Redirects are followed here, one hop at a time, not by `requests`: with
+    `allow_redirects=True` every hop's request has already been SENT by the
+    time anything can look at where it went, and a GET to a dev server on this
+    Mac is the side effect worth refusing, not just its body. Ordinary
+    http-to-https and trailing-slash hops are most of what a real history
+    contains, so they are still followed — each one is checked first.
+
+    One gap stays open on purpose: a name checked here is resolved again by
+    `requests` a moment later, and a DNS server that answers differently the
+    second time (rebinding) gets past it. Closing that means pinning the
+    connection to the checked address, which is a custom transport adapter —
+    out of proportion for a fetch that is off by default.
+    """
+    current = url
     try:
-        # `with`, not a finally: requests.get itself can raise, and a finally
-        # closing a name that was never bound turns a timeout into a NameError.
-        with requests.get(
-            url,
-            timeout=timeout,
-            allow_redirects=True,
-            headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
-            stream=True,
-        ) as response:
-            # Before the body is touched, and before anything else is decided
-            # about this response: a redirect is the one way a url that passed
-            # every check can still end up somewhere private.
-            landed = _private_hop(response)
-            if landed:
-                logger.warning("web fetch refused %s — it redirected to the "
-                               "private host %s", url, landed)
-                return {"error": f"redirected to a private host: {landed}"}
+        for _ in range(MAX_REDIRECTS + 1):
+            refused = _private_target(current)
+            if refused:
+                how = "redirected to" if current != url else "refused"
+                logger.warning("web fetch refused %s — it would reach the "
+                               "private host %s", url, refused)
+                return {"error": f"{how} a private host: {refused}"}
+            # `with`, not a finally: requests.get itself can raise, and a
+            # finally closing a name that was never bound turns a timeout into
+            # a NameError.
+            with requests.get(
+                current,
+                timeout=timeout,
+                allow_redirects=False,
+                headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
+                stream=True,
+            ) as response:
+                location = response.headers.get("Location")
+                if response.status_code in _REDIRECTS and location:
+                    # A scheme check, not safe_url: that one encodes brackets
+                    # for Markdown, which turns `[fe80::1]` into a host no
+                    # check below can read.
+                    current = urljoin(current, location)
+                    if urlparse(current).scheme not in ("http", "https"):
+                        return {"error": "redirected to a non-http(s) url"}
+                    continue
+                if response.status_code in (401, 403, 407, 429, 451):
+                    # A refusal. Recorded and dropped — never retried by
+                    # another route.
+                    return {"error": f"blocked: HTTP {response.status_code}"}
+                response.raise_for_status()
 
-            if response.status_code in (401, 403, 407, 429, 451):
-                # A refusal. Recorded and dropped — never retried by another route.
-                return {"error": f"blocked: HTTP {response.status_code}"}
-            response.raise_for_status()
+                content_type = (response.headers.get("Content-Type") or "").lower()
+                if "html" not in content_type and "text" not in content_type:
+                    return {"error": f"not a text page: {content_type or 'unknown type'}"}
 
-            content_type = (response.headers.get("Content-Type") or "").lower()
-            if "html" not in content_type and "text" not in content_type:
-                return {"error": f"not a text page: {content_type or 'unknown type'}"}
-
-            chunks, total = [], 0
-            for chunk in response.iter_content(chunk_size=65536):
-                chunks.append(chunk)
-                total += len(chunk)
-                if total >= MAX_RESPONSE_BYTES:
-                    break
-            html = b"".join(chunks).decode(response.encoding or "utf-8", "replace")
+                chunks, total = [], 0
+                for chunk in response.iter_content(chunk_size=65536):
+                    chunks.append(chunk)
+                    total += len(chunk)
+                    if total >= MAX_RESPONSE_BYTES:
+                        break
+                html = b"".join(chunks).decode(response.encoding or "utf-8", "replace")
+                break
+        else:
+            return {"error": f"more than {MAX_REDIRECTS} redirects"}
     except Exception as e:
         return http_error(e)
 

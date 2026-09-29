@@ -26,6 +26,9 @@ The sibling of `scribejay/core/text.py`: `safe_url` guards the destination,
 `safe_label` guards the words around it. Import from here rather than copying.
 """
 
+import ipaddress
+import re
+import socket
 from urllib.parse import urlparse
 
 # The characters that end a Markdown link target. `[Title](url)` puts the url
@@ -85,34 +88,74 @@ def safe_url(url: str) -> str:
     return url
 
 
-# Hosts that are this machine or its network. Nothing here is a page the user
-# "read about"; several are dev servers whose content is the user's own work.
+# Names that start like a private address. Not an address test — those go
+# through `ipaddress` below — but a free catch for the rebinding services
+# (`127.0.0.1.nip.io`) that spell the address they will resolve to.
 _PRIVATE_HOST_PREFIXES = ("127.", "10.", "192.168.", "169.254.", "0.")
+
+# IPv4 the way the resolver reads it, not the way people write it: up to four
+# parts, each decimal, octal or hex. `2130706433`, `0x7f000001` and `127.1` are
+# all 127.0.0.1 to `getaddrinfo`, and a redirect gets to pick the spelling.
+_IPV4_SHORTHAND = re.compile(r"^(0x[0-9a-f]+|\d+)(\.(0x[0-9a-f]+|\d+)){0,3}$")
+
+
+def _ip_literal(host: str):
+    try:
+        return ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    if _IPV4_SHORTHAND.match(host):
+        try:
+            return ipaddress.ip_address(socket.inet_aton(host))
+        except OSError:
+            return None
+    return None
+
+
+def is_private_address(ip) -> bool:
+    """True for any address that is not on the public internet.
+
+    `is_global` is the whole rule, so the stdlib owns the list of ranges —
+    loopback, RFC1918, link-local and the metadata address, CGNAT, IPv6
+    unique-local and link-local — rather than a hand-kept one that misses the
+    next range. Multicast is global by that definition and is not a web page.
+
+    An IPv4-mapped IPv6 address is judged as the IPv4 address it carries. The
+    3.12 this project's venv runs already does that inside `is_global`, so no
+    test here can fail without the unwrap. It stays for older interpreters
+    `requires-python` still admits, whose `ipaddress` judged the IPv6 wrapper
+    and not the address inside it.
+    """
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return not ip.is_global or ip.is_multicast
 
 
 def is_private_host(host: str) -> bool:
     """True if this host is this machine or its own network.
 
-    Lives here rather than beside its first caller because it now has two, and
+    Lives here rather than beside its first caller because it has two, and
     they guard different moments: `activity.py:candidate_urls` screens the url
-    the user VISITED, and `sources/web_fetch.py` screens where that url
-    actually LANDED after redirects. A second copy would let the two drift, and
-    the half that drifted would be the one nobody reads.
+    the user VISITED, and `sources/web_fetch.py` screens every url a redirect
+    points it at. A second copy would let the two drift, and the half that
+    drifted would be the one nobody reads.
+
+    An address is judged as an address, however it is spelled. A name is
+    judged only by its shape here — whether it RESOLVES somewhere private is a
+    DNS question, and `web_fetch` asks it before each request.
 
     An empty or unparseable host is private. That is the fail-closed answer,
     and it costs at most one page: a host nothing can identify is not one worth
     sending a request to, or reading a body from.
     """
-    host = (host or "").lower().split(":")[0]
-    if not host or host in ("localhost", "::1") or host.endswith(".local"):
+    host = (host or "").lower().strip("[]").rstrip(".")
+    if not host:
         return True
-    if host.startswith(_PRIVATE_HOST_PREFIXES):
-        return True
-    # 172.16.0.0/12 — the one private range a string prefix cannot express.
-    parts = host.split(".")
-    if len(parts) == 4 and parts[0] == "172":
-        try:
-            return 16 <= int(parts[1]) <= 31
-        except ValueError:
-            return False
-    return False
+    ip = _ip_literal(host)
+    if ip is None and host.count(":") == 1:  # "name:port", never IPv6
+        host = host.split(":")[0]
+        ip = _ip_literal(host)
+    if ip is not None:
+        return is_private_address(ip)
+    return (host == "localhost" or host.endswith((".localhost", ".local"))
+            or host.startswith(_PRIVATE_HOST_PREFIXES))
