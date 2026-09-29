@@ -86,6 +86,21 @@ def test_a_full_run_writes_folders_toggles_and_a_backend(tmp_path, ollama_up):
     assert document["git"]["projects_dir"] == str(tmp_path / "repos")
 
 
+def test_every_command_the_wizard_suggests_takes_a_real_date(tmp_path, ollama_up, capsys):
+    """The last thing a new user sees is a command to run. It once said
+    `--date yesterday`, which the tasks parse with strptime: the very first run
+    failed, and fired a push alert if notify had just been switched on."""
+    from datetime import datetime
+
+    assert init.run(init.Console(answers=_script(tmp_path))) == 0
+    runs = [line.split() for line in capsys.readouterr().out.splitlines()
+            if "scribejay run" in line]
+    assert runs
+    for words in runs:
+        if "--date" in words:
+            datetime.strptime(words[words.index("--date") + 1], "%Y-%m-%d")
+
+
 def test_the_journal_folder_is_created(tmp_path, ollama_up):
     """The one place in ScribeJay that makes a directory. Everywhere else a
     missing folder means the path is wrong."""

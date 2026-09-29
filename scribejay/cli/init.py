@@ -361,7 +361,7 @@ def run(console: Console) -> int:
 
     console.say("\nDone. Two things worth running now:")
     console.say("  scribejay doctor        — is everything actually working?")
-    console.say("  scribejay run daily_commits --date yesterday")
+    console.say("  scribejay run daily_commits  — yesterday's page, written now")
     console.say("\nThe first page appears tomorrow morning.")
     return 0
 
