@@ -46,9 +46,12 @@ documented API, so its reader warns and skips when the expected shape drifts.
 - **Gemini drop folder** (`SCRIBEJAY_GEMINI_CHATS_DIR`, default
   `~/Documents/ScribeJay/gemini_inbox`) — Gemini has no local footprint, so drop an exported
   conversation (`.md`/`.txt`/`.json`, one file per chat) into this folder and it
-  gets summarized once. `config/ai_chat_learnings_state.json` records processed
-  filenames (by mtime) so re-runs never re-summarize the same file; files are
-  never modified or deleted. Only the normal "yesterday" run reads the folder —
+  gets summarized once. `ai_chat_learnings_state.json` in `~/.scribejay` (or in
+  `config/`, on a checkout that predates packaging and already has one there)
+  records processed filenames (by mtime) so re-runs never re-summarize the same
+  file. A file is recorded only once its page is in the journal folder — a draft
+  that went out by email instead leaves it unrecorded, so the next run picks it
+  up again. Files are never modified or deleted. Only the normal "yesterday" run reads the folder —
   backfill runs skip it (a drop file has no reliable per-day date).
 
 ## Output

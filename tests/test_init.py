@@ -227,6 +227,20 @@ def test_quitting_part_way_writes_nothing(tmp_path):
     assert not config.config_path().exists()
 
 
+def test_quitting_after_the_first_flush_says_what_was_saved(tmp_path, monkeypatch, capsys):
+    """The folders and sources are flushed before the model step, because the
+    steps after them read the settings back. A quit after that point must not
+    tell the user the old file is untouched — it is not."""
+    answers = _script(tmp_path)[:7]   # through the sources, then nothing more
+    scripted = init.Console(answers=answers)
+    monkeypatch.setattr(init, "Console", lambda *a, **k: scripted)
+    assert init.main([]) == 1
+    assert config.config_path().exists()
+    err = capsys.readouterr().err
+    assert "Nothing was changed" not in err
+    assert "were saved" in err
+
+
 def test_main_turns_an_abort_into_exit_one(monkeypatch, capsys):
     monkeypatch.setattr(init, "Console", lambda *a, **k: object())
     monkeypatch.setattr(init, "run", lambda console: (_ for _ in ()).throw(

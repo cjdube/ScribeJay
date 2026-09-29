@@ -28,14 +28,17 @@ should still be declining it in March when they install the Strava app for
 unrelated reasons — the probe would flip that back on, and the first they would
 know is a 5:50 AM push alert.
 
-## Nothing is written until the questions are done
+## Nothing is written until a group of questions is done
 
-Answers are staged with `config.set_value` and flushed once, so quitting half
-way (Ctrl-C, Ctrl-D, or a validation dead end) leaves the previous settings
-exactly as they were. The two exceptions are stated where they happen: a
-folder is created when it is named, and an API key goes to the Keychain when it
-is typed — neither can be staged, and both are harmless to have done if the
-user then quits.
+Answers are staged with `config.set_value` and flushed twice: once after the
+folders and sources, because the disk-access check and the settings screen
+read those back, and once after the model. Quitting before the first flush
+(Ctrl-C, Ctrl-D, or a validation dead end) leaves the previous settings exactly
+as they were; quitting after it keeps the folders and sources and drops the
+rest, and the message on the way out says which of the two happened. The two
+other exceptions are stated where they happen: a folder is created when it is
+named, and an API key goes to the Keychain when it is typed — neither can be
+staged, and both are harmless to have done if the user then quits.
 """
 
 import getpass
@@ -70,7 +73,12 @@ Chrome's history file is protected by macOS. To let ScribeJay read it:
 
 
 class Aborted(Exception):
-    """The user quit. Nothing staged gets written."""
+    """The user quit. Nothing staged since the last flush gets written.
+
+    `saved` is True once the first flush has happened, so the exit message
+    does not claim an untouched file that is no longer untouched."""
+
+    saved = False
 
 
 class Console:
@@ -352,12 +360,16 @@ def run(console: Console) -> int:
     # After the flush, because both of these read the settings back: the disk
     # check asks whether chrome is switched on, and the settings screen renders
     # the document.
-    step_disk_access(console)
-    step_model(console)
-    config.flush()
+    try:
+        step_disk_access(console)
+        step_model(console)
+        config.flush()
 
-    step_settings_screen(console)
-    step_schedule(console)
+        step_settings_screen(console)
+        step_schedule(console)
+    except Aborted as e:
+        e.saved = True
+        raise
 
     console.say("\nDone. Two things worth running now:")
     console.say("  scribejay doctor        — is everything actually working?")
@@ -378,7 +390,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return run(console)
     except Aborted as e:
-        print(f"\nStopped ({e}). Nothing was changed.", file=sys.stderr)
+        outcome = ("Your folder and source answers were saved; nothing after "
+                   "them was." if e.saved else "Nothing was changed.")
+        print(f"\nStopped ({e}). {outcome}", file=sys.stderr)
         return 1
 
 
