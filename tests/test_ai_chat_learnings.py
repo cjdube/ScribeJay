@@ -105,6 +105,21 @@ def test_a_failed_persist_leaves_the_gemini_chats_unprocessed(stubbed, monkeypat
     assert "chatA.md" not in load_json(ai.STATE_PATH, {}).get("gemini_processed", {})
 
 
+def test_an_emailed_draft_leaves_the_gemini_chats_unprocessed(stubbed, monkeypatch):
+    """The quieter failure. The vault write fails, the email gets through, and
+    persist_or_email returns the write's error rather than raising. The page
+    was never written, so the watermark must stay up: fixing the folder and
+    re-running should rebuild it with the Gemini sections, not without them."""
+    monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
+    monkeypatch.setattr(ai, "fetch_gemini_chats",
+                        lambda processed, max_chars: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
+    monkeypatch.setattr(ai, "persist_or_email",
+                        lambda *a, **k: {"error": "vault folder missing"})
+
+    assert ai.main() == 0
+    assert "chatA.md" not in load_json(ai.STATE_PATH, {}).get("gemini_processed", {})
+
+
 def test_a_chat_the_model_found_nothing_in_is_still_marked_processed(stubbed, monkeypatch):
     """The other half of the rule. Nothing is written, so nothing can fail
     after this point — and re-summarizing an empty chat every morning forever

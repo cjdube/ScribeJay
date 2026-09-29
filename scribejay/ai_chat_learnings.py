@@ -226,15 +226,17 @@ def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) ->
         return
 
     body = f"## AI Chat Learnings: {day:%B %-d, %Y}\n\n" + "\n\n".join(sections) + "\n"
-    persist_or_email(
+    result = persist_or_email(
         body, "AI-Chat-Learnings", day,
         subject=f"AI Chat Learnings (needs manual paste) - {day:%Y-%m-%d}",
         task_name="ai_chat_learnings", logger=logger,
     )
-    # After, never before. persist_or_email raises when it cannot deliver at
-    # all, and letting that skip the watermark is the whole point: those chats
-    # stay unprocessed and tomorrow's run picks them up again.
-    _mark_processed(newly_processed)
+    # After, never before, and only once the page is actually in the vault.
+    # persist_or_email raises when it cannot deliver at all, and returns the
+    # vault write's error when only the email got through — either way those
+    # chats stay unprocessed and tomorrow's run picks them up again.
+    if "error" not in result:
+        _mark_processed(newly_processed)
 
 
 def main() -> int:
