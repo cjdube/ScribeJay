@@ -18,7 +18,7 @@ account at all. This page buys you four more things:
 | Working sessions logged as calendar events | `claude_time_blocks` |
 | Yesterday's events colour-coded | `calendar_colorizer` |
 | Strava rides logged onto the calendar | `strava_download` |
-| Yesterday's sent mail, and your YouTube Likes | `daily_correspondence`, `daily_youtube_learnings` |
+| Yesterday's sent mail, and your YouTube Likes since the last finished day | `daily_correspondence`, `daily_youtube_learnings` |
 
 Budget fifteen minutes. Everything is free.
 

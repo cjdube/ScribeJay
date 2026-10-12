@@ -1,6 +1,7 @@
 # Daily learnings — Chrome and YouTube
 
-Two tasks, one shape: read yesterday's activity from one channel, have the local
+Two tasks, one shape: read recent activity from one channel (yesterday for Chrome;
+for YouTube, every day since the last finished run, see below), have the local
 model draft a short review of what it taught, and write one Markdown file per
 day into the journal folder (`LEARNINGS_DIR`, default `~/Documents/ScribeJay`).
 They share the exclusion-filter and compaction helpers in
@@ -62,11 +63,16 @@ Off, nothing changes: no request, no extra model call.
 
 ## YouTube
 
-Reads the prior day's Liked videos via `scribejay/sources/youtube.py` — title,
-channel and description, **not** transcripts. The model writes a short synthesis
+Reads the Liked videos via `scribejay/sources/youtube.py` — title,
+channel and description, **not** transcripts. Each run catches up: it covers every
+day since the last one it finished, oldest first, up to 14 days, so a week with the
+Mac off still gets its pages. The last finished day is kept in
+`youtube_learnings_state.json` in `~/.scribejay`. A YouTube fetch error stops the
+catch-up and that day is retried next run. `--date` and `--dry-run` never move
+that marker. The model writes a short synthesis
 of what they teach; the list of the exact videos (verbatim titles, scheme-validated
 URLs) is appended **in Python**, not by the model, so the links are always real.
-Written as `Daily-YouTube-<date>.md`.
+Written as `Daily-YouTube-<date>.md`, one file per day.
 
 Likes are timestamped UTC and the day window is local — `_liked_local_date`
 converts before comparing. See [timezones.md](timezones.md).

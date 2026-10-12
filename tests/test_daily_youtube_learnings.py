@@ -183,3 +183,120 @@ def test_a_real_run_still_uses_the_task_log(stubbed_run, monkeypatch):
     monkeypatch.setattr(yt, "fetch_liked_videos", lambda *a, **k: {"videos": []})
     yt.main()
     assert names == ["daily_youtube_learnings"]
+
+
+# ---- catch-up ---------------------------------------------------------------
+
+YESTERDAY = __import__("datetime").date(2026, 10, 11)
+
+
+@pytest.fixture
+def catchup(stubbed_run, monkeypatch):
+    """Yesterday pinned to YESTERDAY; fetch_liked_videos records each day it is
+    asked for and answers from `replies` (default: one video)."""
+    import json
+
+    monkeypatch.setattr(yt, "prior_day", lambda: (None, None, YESTERDAY))
+    state = {"fetched": [], "replies": {}, "warms": 0}
+
+    def fetch(start, end):
+        state["fetched"].append(start)
+        return state["replies"].get(start, {"videos": [{"title": "T", "channel": "C", "url": "https://youtu.be/x"}]})
+
+    def warm(**k):
+        state["warms"] += 1
+        return True
+
+    monkeypatch.setattr(yt, "fetch_liked_videos", fetch)
+    monkeypatch.setattr(yt, "warm_model", warm)
+    state["persists"] = stubbed_run["persists"]
+    state["seed"] = lambda day: yt.state_path().write_text(json.dumps({"last_day": day.isoformat()}))
+    state["stored"] = lambda: json.loads(yt.state_path().read_text()).get("last_day") if yt.state_path().exists() else None
+    return state
+
+
+def _days_back(n):
+    from datetime import timedelta
+    return YESTERDAY - timedelta(days=n)
+
+
+def test_first_run_covers_only_yesterday(catchup):
+    """No marker yet: writing two weeks of pages on the first run would be a surprise."""
+    assert yt.main() == 0
+    assert catchup["fetched"] == ["2026-10-11"]
+    assert catchup["stored"]() == "2026-10-11"
+
+
+def test_missed_days_are_covered_oldest_first(catchup):
+    """A Mac that was off for days must still get those pages, in order."""
+    catchup["seed"](_days_back(3))
+    assert yt.main() == 0
+    assert catchup["fetched"] == ["2026-10-09", "2026-10-10", "2026-10-11"]
+    assert catchup["stored"]() == "2026-10-11"
+
+
+def test_catchup_is_capped_at_fourteen_days(catchup):
+    """A month's gap must not become a month of model calls; older days are
+    the --date flag's job."""
+    catchup["seed"](_days_back(30))
+    assert yt.main() == 0
+    assert len(catchup["fetched"]) == 14
+    assert catchup["fetched"][0] == "2026-09-28"
+    assert catchup["fetched"][-1] == "2026-10-11"
+
+
+def test_failed_fetch_stops_the_catchup_and_keeps_earlier_days(catchup):
+    """A day whose fetch failed must be retried, not skipped: the marker stops
+    at the last day that finished, and later days wait behind it."""
+    catchup["seed"](_days_back(3))
+    catchup["replies"]["2026-10-10"] = {"videos": [], "error": "boom"}
+    assert yt.main() == 0
+    assert catchup["fetched"] == ["2026-10-09", "2026-10-10"]
+    assert catchup["stored"]() == "2026-10-09"
+
+
+def test_already_covered_does_nothing_but_still_completes(catchup, capsys):
+    """The run-complete line is what the health check reads; a no-op run that
+    omits it would look like a run that never finished."""
+    catchup["seed"](YESTERDAY)
+    assert yt.main() == 0
+    assert catchup["fetched"] == []
+    assert any(is_run_success(line) for line in capsys.readouterr().out.splitlines())
+
+
+def test_date_flag_never_moves_the_marker(catchup, monkeypatch):
+    """--date is for repairing one day by hand; it must not tell the scheduled
+    job that the days in between are done."""
+    from datetime import date
+
+    catchup["seed"](date(2026, 8, 1))
+    monkeypatch.setattr(sys, "argv", ["daily_youtube_learnings", "--date", "2026-09-03"])
+    assert yt.main() == 0
+    assert catchup["fetched"] == ["2026-09-03"]
+    assert catchup["stored"]() == "2026-08-01"
+
+
+def test_dry_run_never_moves_the_marker(catchup, monkeypatch):
+    """A preview that advanced the marker would make the real run skip the days
+    it previewed."""
+    catchup["seed"](_days_back(2))
+    monkeypatch.setattr(sys, "argv", ["daily_youtube_learnings", "--dry-run"])
+    assert yt.main() == 0
+    assert len(catchup["fetched"]) == 2
+    assert catchup["stored"]() == "2026-10-09"
+
+
+def test_a_day_with_no_likes_still_advances_the_marker(catchup):
+    """A quiet day is finished, not missed; otherwise it is refetched forever."""
+    catchup["replies"]["2026-10-11"] = {"videos": []}
+    assert yt.main() == 0
+    assert catchup["persists"] == []
+    assert catchup["stored"]() == "2026-10-11"
+
+
+def test_model_is_warmed_once_across_a_catchup(catchup):
+    """Loading the model is the slow part; a seven-day catch-up must pay it once."""
+    catchup["seed"](_days_back(3))
+    assert yt.main() == 0
+    assert len(catchup["persists"]) == 3
+    assert catchup["warms"] == 1

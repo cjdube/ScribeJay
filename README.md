@@ -48,7 +48,7 @@ See [docs/cli.md](docs/cli.md) for every command.
 | `ai_chat_learnings` | 3:30 AM | Yesterday's Claude Code / Codex / Gemini chats, summarized to a page | nothing |
 | `claude_time_blocks` | 3:45 AM | Claude Code / Codex working sessions, as calendar events | Google |
 | `daily_commits` | 3:55 AM | Yesterday's git commits across your projects, to a page | nothing |
-| `daily_youtube_learnings` | 4:05 AM | Yesterday's YouTube Likes, summarized to a page | Google |
+| `daily_youtube_learnings` | 4:05 AM | YouTube Likes since the last finished day (up to 14 days, catches up), summarized to a page | Google |
 | `daily_chrome_learnings` | 4:15 AM | Yesterday's Chrome browsing, summarized to a page | nothing |
 | `daily_correspondence` | 4:20 AM | Yesterday's mail both ways, and who is still waiting on a reply | Google |
 | `strava_download` | 5:50 AM | Yesterday's Strava activities, as calendar events | Google + Strava |

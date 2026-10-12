@@ -95,6 +95,7 @@ from scribejay.sources import transcripts as _chat_transcripts  # noqa: E402
 from scribejay.sources import web_fetch as _web_fetch  # noqa: E402
 from scribejay import ai_chat_learnings as _ai_chat_learnings  # noqa: E402
 from scribejay import correspondence as _correspondence  # noqa: E402
+from scribejay import daily_youtube_learnings as _daily_youtube_learnings  # noqa: E402
 from scribejay.cli import schedule as _schedule  # noqa: E402
 from scribejay.cli import settings_server as _settings_server  # noqa: E402
 
@@ -247,6 +248,15 @@ def _isolate_correspondence_store(tmp_path, monkeypatch):
     has known for a year. tests/test_correspondence.py re-patches per test."""
     monkeypatch.setattr(_correspondence, "store_path",
                         lambda: tmp_path / "correspondence_threads.json")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_youtube_learnings_store(tmp_path, monkeypatch):
+    """Redirect the YouTube catch-up marker off the real one, patched on the
+    function for the same reason as the correspondence store above. A test
+    date landing in the real marker would make the 4:05 job skip real days."""
+    monkeypatch.setattr(_daily_youtube_learnings, "state_path",
+                        lambda: tmp_path / "youtube_learnings_state.json")
 
 
 @pytest.fixture(autouse=True)
