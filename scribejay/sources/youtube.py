@@ -7,7 +7,7 @@ non-functional through the API since ~2016, but the Likes playlist works.
 
 Mirrors LocalLLMAgent's agent/tools/youtube.py. Uses the shared Google OAuth
 helper (scribejay/core/google.py) — needs the `youtube.readonly` scope, which
-is on by default in this repo's narrower SCOPES.
+consent asks for while this source is switched on.
 
 Usage:
     python -m scribejay.sources.youtube --start 2026-06-30 --end 2026-07-06

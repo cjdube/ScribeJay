@@ -78,6 +78,28 @@ def _cmd_doctor(args, extra: list[str]) -> int:
     return doctor.main(["--probe"] if args.probe else [])
 
 
+def _cmd_consent(args, extra: list[str]) -> int:
+    from scribejay.core import google
+
+    wanted = google.wanted_scopes()
+    if not wanted:
+        print("No Google source is switched on and no fallback email is set, "
+              "so there is nothing to consent to.")
+        return 1
+    print("Asking Google for:")
+    for scope in wanted:
+        print(f"  {scope.rsplit('/', 1)[-1]}")
+    print("Turn off any you do not want in `scribejay settings` first. "
+          "The old grant, if any, is revoked before the browser opens.")
+    try:
+        granted = google.consent()
+    except Exception as e:
+        print(f"Consent failed: {e}")
+        return 1
+    print(f"Granted {len(granted)} scope(s).")
+    return 0
+
+
 def _cmd_status(args, extra: list[str]) -> int:
     from scribejay import status
 
@@ -133,6 +155,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--probe", action="store_true",
                    help="also call each switched-on source for real")
     p.set_defaults(func=_cmd_doctor)
+
+    p = sub.add_parser(
+        "consent", help="grant Google only what the switched-on sources use",
+        description="Revokes the current Google grant, then opens a browser to "
+                    "consent to exactly the scopes the sources that are on "
+                    "need. Run it after turning a Google source on or off.")
+    p.set_defaults(func=_cmd_consent)
 
     p = sub.add_parser("migrate", help="move an old config/.env into the settings file")
     p.add_argument("--dry-run", action="store_true",

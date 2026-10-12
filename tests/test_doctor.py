@@ -274,7 +274,7 @@ def test_a_missing_oauth_client_fails(monkeypatch, tmp_path):
     assert "setup-google" in checks[0].detail
 
 
-def test_no_token_yet_warns_and_says_to_run_a_task_by_hand(monkeypatch, tmp_path):
+def test_no_token_yet_warns_and_says_to_run_consent_by_hand(monkeypatch, tmp_path):
     """A launchd job cannot open a consent window, so an install that has
     never consented is silently broken every morning until someone runs one
     task in a terminal."""
@@ -283,7 +283,7 @@ def test_no_token_yet_warns_and_says_to_run_a_task_by_hand(monkeypatch, tmp_path
     monkeypatch.setenv("GOOGLE_TOKEN_PATH", str(tmp_path / "token.json"))
     statuses = {c.label: c for c in doctor.google_checks()}
     assert statuses["google consent"].status == doctor.WARN
-    assert "by hand" in statuses["google consent"].detail
+    assert "scribejay consent" in statuses["google consent"].detail
 
 
 def _token(tmp_path, monkeypatch, scopes):
@@ -293,24 +293,41 @@ def _token(tmp_path, monkeypatch, scopes):
     monkeypatch.setenv("GOOGLE_TOKEN_PATH", str(tmp_path / "token.json"))
 
 
+def _wanted(tmp_path, monkeypatch):
+    """What consent would ask for once the OAuth client exists — which is
+    what switches the Google sources on in a test that does not set them."""
+    from scribejay.core import google
+
+    _token(tmp_path, monkeypatch, [])
+    return google.wanted_scopes()
+
+
 def test_a_token_missing_a_scope_fails_and_names_it(monkeypatch, tmp_path):
     """The quiet one. A token minted before youtube.readonly was added keeps
     calendar and mail working, so nothing looks like an auth problem — there
     is just one empty page."""
-    from scribejay.core.google import SCOPES
-
-    _token(tmp_path, monkeypatch, [s for s in SCOPES if "youtube" not in s])
+    wanted = _wanted(tmp_path, monkeypatch)
+    _token(tmp_path, monkeypatch, [s for s in wanted if "youtube" not in s])
     statuses = {c.label: c for c in doctor.google_checks()}
     assert statuses["google scopes"].status == doctor.FAIL
     assert "youtube.readonly" in statuses["google scopes"].detail
 
 
 def test_a_complete_token_passes(monkeypatch, tmp_path):
-    from scribejay.core.google import SCOPES
-
-    _token(tmp_path, monkeypatch, list(SCOPES))
+    _token(tmp_path, monkeypatch, _wanted(tmp_path, monkeypatch))
     statuses = {c.label: c.status for c in doctor.google_checks()}
     assert statuses["google scopes"] == doctor.OK
+
+
+def test_a_token_holding_more_than_the_sources_use_warns(monkeypatch, tmp_path):
+    """Nothing breaks, so not a FAIL. But the token is a readable file and
+    every scope on it travels with a stolen copy."""
+    wanted = _wanted(tmp_path, monkeypatch)
+    _token(tmp_path, monkeypatch, wanted)
+    monkeypatch.setenv("SCRIBEJAY_FEATURE_GMAIL", "0")
+    check = {c.label: c for c in doctor.google_checks()}["google scopes"]
+    assert check.status == doctor.WARN
+    assert "gmail.readonly" in check.detail and "scribejay consent" in check.detail
 
 
 def test_an_unreadable_token_fails(monkeypatch, tmp_path):
@@ -370,8 +387,6 @@ def test_a_source_that_raises_becomes_one_failed_line(monkeypatch):
 def _stub_everything(monkeypatch, tmp_path):
     """Every section that would touch a real machine, replaced."""
     from scribejay.cli import schedule, settings_form
-    from scribejay.core.google import SCOPES
-
     fake = tmp_path / "History"
     conn = sqlite3.connect(fake)
     conn.execute("CREATE TABLE urls (id INTEGER)")
@@ -379,7 +394,7 @@ def _stub_everything(monkeypatch, tmp_path):
     conn.close()
     monkeypatch.setattr("scribejay.sources.chrome.HISTORY_PATH", fake)
     _ollama(monkeypatch, [config.getenv("OLLAMA_MODEL")])
-    _token(tmp_path, monkeypatch, list(SCOPES))
+    _token(tmp_path, monkeypatch, _wanted(tmp_path, monkeypatch))
     monkeypatch.setattr(settings_form, "test_feature", lambda name: "1 row(s) for yesterday")
     monkeypatch.setattr(schedule, "is_loaded", lambda label: True)
 

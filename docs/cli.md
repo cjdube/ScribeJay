@@ -11,6 +11,7 @@ scribejay status                      what is on, what is off, what will run
 scribejay run <task> [args...]        run one task now
 scribejay schedule install|remove|status
 scribejay doctor [--probe]            why is nothing appearing?
+scribejay consent                     (re)consent to Google for the sources that are on
 scribejay migrate [--dry-run]         move an old config/.env into the settings file
 ```
 
@@ -82,8 +83,7 @@ whole path and prints one line per step:
 GOOGLE
   ok    google client            /Users/you/.scribejay/google_credentials.json
   FAIL  google scopes            consent is missing 1 scope(s): youtube.readonly.
-                                 Delete ...google_token.json and run a task by
-                                 hand to consent again.
+                                 Run `scribejay consent`.
 
 JOBS
   ok    daily_commits            last completed 2026-08-30 03:55:09
@@ -121,6 +121,17 @@ is refused Safari's history and ~/Documents. The wizard no longer asks you to
 grant your terminal anything. If an older macOS refuses the read, `doctor`
 names the Python file the job runs as — grant that, never the terminal, whose
 grant opens everything to every command you type.
+
+## `scribejay consent`
+
+Asks Google for exactly the scopes your switched-on sources use, and nothing
+else. Run it once after setup, and again whenever you switch a Google source
+on or off. It opens a browser, so it never runs on a schedule.
+
+It revokes the old grant at Google **before** it deletes the token file. A
+refresh token outlives its file, so deleting the file alone would leave the
+old, wider grant live. If Google refuses the revoke, nothing on disk changes
+and you can retry. [setup-google.md](setup-google.md#7-consent-once-in-a-browser)
 
 ## `scribejay run`
 

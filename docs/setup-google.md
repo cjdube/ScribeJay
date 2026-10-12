@@ -49,9 +49,9 @@ selected project before you carry on.
 - **Gmail API**
 - **YouTube Data API v3**
 
-Enable all three now even if you only want one. Adding a scope later means
-re-consenting, and the symptom of a missing one is not an error — it is a
-single empty page every morning.
+Enabling an API grants nothing by itself, so enabling all three costs nothing.
+What ScribeJay may *read* is set at consent (step 7), and it asks only for the
+sources you have switched on.
 
 ## 3. Fill in the consent screen
 
@@ -111,12 +111,18 @@ file** in `scribejay settings` (the setting is `GOOGLE_CREDENTIALS_PATH`).
 
 ## 7. Consent, once, in a browser
 
-Consent needs a browser window, and **a launchd job cannot open one**. So the
-first Google run has to be one you start yourself:
+First switch **off** any Google source you do not want, in `scribejay
+settings`. A Google source you never answered counts as on once the client
+file exists, and consent asks for every source that is on.
+
+Consent needs a browser window, and **a launchd job cannot open one**. So you
+run it yourself:
 
 ```bash
-scribejay run daily_correspondence
+scribejay consent
 ```
+
+It prints the scopes it will ask for before the browser opens.
 
 A browser opens. Pick the account from step 1 — ScribeJay forces the account
 chooser on purpose, because YouTube Likes only work on the account that owns
@@ -126,8 +132,14 @@ If you published in step 4 you will see **"Google hasn't verified this app"**.
 That is your own app, unverified because you did not pay for a review. Click
 **Advanced → Go to ScribeJay (unsafe)**.
 
-Approve all four permissions. ScribeJay writes `~/.scribejay/google_token.json`
-and every later run — including the scheduled ones — uses it silently.
+Approve every permission on the screen. ScribeJay writes
+`~/.scribejay/google_token.json` and every later run — including the scheduled
+ones — uses it silently.
+
+**Turned a Google source on or off later?** Run `scribejay consent` again. It
+revokes the old grant at Google first, then asks for the new set. Deleting the
+token file is not enough: the old grant stays live at Google with nothing on
+disk to show it.
 
 ## 8. Check it
 
@@ -140,7 +152,7 @@ You want three lines:
 ```
   ok    google client            /Users/you/.scribejay/google_credentials.json
   ok    google consent           ...
-  ok    google scopes            all 4 granted
+  ok    google scopes            exactly what the sources use: ...
 ```
 
 Then switch the Google sources on and reinstall the schedule:
@@ -154,25 +166,35 @@ scribejay schedule install
 
 ## What ScribeJay asked for, and why
 
-Four scopes, listed in `scribejay/core/google.py`:
+One scope per switched-on source, and nothing for a source that is off
+(`FEATURE_SCOPES` in `scribejay/core/google.py`):
 
-| Scope | Used for |
-|---|---|
-| `calendar` | Logging Strava rides and AI session blocks; recolouring yesterday's events |
-| `gmail.readonly` | Reading yesterday's **sent** mail — subjects and recipients only |
-| `gmail.send` | The fallback that emails you a page when the vault write fails, and the colorizer's failure notice |
-| `youtube.readonly` | Reading your Likes |
+| Scope | Asked for when | Used for |
+|---|---|---|
+| `calendar.events` | Google Calendar is on | Logging Strava rides and AI session blocks; recolouring yesterday's events |
+| `gmail.readonly` | Gmail is on | Reading yesterday's **sent** mail — subjects and recipients only |
+| `youtube.readonly` | YouTube is on | Reading your Likes |
+| `gmail.send` | **Fallback email** (`BRIEF_TO_EMAIL`) is set | Emailing you a page when the vault write fails, and the colorizer's failure notice |
 
-There is no `gmail.modify`, no Google Tasks, no Pub/Sub. Nothing ScribeJay
-does can delete a message or an event.
+`calendar.events`, not `calendar`: the full scope also lets its holder delete
+calendars and change who they are shared with, and ScribeJay only ever touches
+events. There is no `gmail.modify`, no Google Tasks, no Pub/Sub.
+
+A token from before this change holds the full `calendar` scope. It still
+works, and `doctor` warns that it is wider than needed. Run `scribejay
+consent` to narrow it.
 
 ## When it stops working
 
 Run `scribejay doctor` first — it checks all four of these and names which one
 broke.
 
-**"consent is missing N scope(s)"** — your token was minted before a scope
-existed. Delete `~/.scribejay/google_token.json` and repeat step 7.
+**"consent is missing N scope(s)"** — you switched a Google source on after
+consenting. Run `scribejay consent`.
+
+**"the token holds more than the switched-on sources need"** — a WARN, not a
+failure. You switched a source off, or the token predates the narrower
+calendar scope. Run `scribejay consent`.
 
 **Authentication errors starting exactly a week after setup** — the app is
 still in Testing. Go back to step 4 and publish it.

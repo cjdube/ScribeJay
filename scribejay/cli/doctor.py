@@ -281,7 +281,7 @@ def google_checks() -> list[Check]:
     for the new source returns 403 while calendar and mail keep working, so the
     symptom is one empty page and nothing that looks like an auth problem.
     """
-    from scribejay.core.google import SCOPES
+    from scribejay.core import google
 
     wanted = [f for f in ("google_calendar", "gmail", "youtube")
               if features.enabled(f)]
@@ -299,7 +299,7 @@ def google_checks() -> list[Check]:
         out.append(Check(WARN, "google consent",
                          f"no {token} yet — the next run opens a browser once. "
                          "A launchd job cannot do that, so run "
-                         "`scribejay run daily_commits` by hand first."))
+                         "`scribejay consent` by hand first."))
         return out
 
     import json
@@ -310,14 +310,25 @@ def google_checks() -> list[Check]:
                          f"{token} is unreadable ({e}) — delete it and consent again"))
         return out
 
-    missing = [s for s in SCOPES if s not in granted]
+    def names(scopes):
+        return ", ".join(s.rsplit("/", 1)[-1] for s in scopes)
+
+    missing = google.missing_scopes(granted)
+    extra = google.extra_scopes(granted)
     if missing:
         out.append(Check(FAIL, "google scopes",
                          f"consent is missing {len(missing)} scope(s): "
-                         + ", ".join(s.rsplit("/", 1)[-1] for s in missing)
-                         + f". Delete {token} and run a task by hand to consent again."))
+                         f"{names(missing)}. Run `scribejay consent`."))
+    elif extra:
+        # A WARN, not a FAIL: nothing breaks. But the token is a readable file,
+        # and every scope on it is one a stolen copy carries.
+        out.append(Check(WARN, "google scopes",
+                         "the token holds more than the switched-on sources "
+                         f"need: {names(extra)}. Run `scribejay consent` to "
+                         "narrow it."))
     else:
-        out.append(Check(OK, "google scopes", f"all {len(SCOPES)} granted"))
+        out.append(Check(OK, "google scopes",
+                         f"exactly what the sources use: {names(granted)}"))
     return out
 
 
