@@ -12,7 +12,7 @@ from scribejay.core import config
 from scribejay.core.logs import notify_failure
 from scribejay.sinks.email import send_email
 
-DEFAULT_LEARNINGS_DIR = str(Path.home() / "Documents" / "ScribeJay")
+DEFAULT_LEARNINGS_DIR = str(Path.home() / "ScribeJay")
 
 
 def _learnings_dir() -> Path:

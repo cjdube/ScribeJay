@@ -148,14 +148,14 @@ SETTINGS: tuple[Setting, ...] = (
              "Obsidian vault. ScribeJay will not create it: a missing folder "
              "means the path is wrong, and writing pages somewhere nobody "
              "reads is worse than failing.",
-        default=str(_HOME / "Documents" / "ScribeJay"),
+        default=str(_HOME / "ScribeJay"),
     ),
     Setting(
         key="CORRESPONDENCE_DIR", section="output", name="correspondence_dir", type="path",
         label="Correspondence folder",
         help="Where the daily sent-mail page is written. Kept out of the "
              "journal folder on purpose so it is not swept into an ingest queue.",
-        default=str(_HOME / "Documents" / "ScribeJay" / "correspondence"),
+        default=str(_HOME / "ScribeJay" / "correspondence"),
     ),
     Setting(
         key="BRIEF_TO_EMAIL", section="output", name="fallback_email",
@@ -373,7 +373,7 @@ SETTINGS: tuple[Setting, ...] = (
         label="Gemini chat drop folder",
         help="Gemini has no local transcript store, so exported chats are "
              "read from a folder you drop them into.",
-        default=str(_HOME / "Documents" / "ScribeJay" / "gemini_inbox"),
+        default=str(_HOME / "ScribeJay" / "gemini_inbox"),
     ),
     # Deliberately not type="path": this value is a path *pattern* that gets
     # compared against a folder name, never a folder ScribeJay opens, so it

@@ -38,7 +38,7 @@ from scribejay.core import config
 from scribejay.core.text import safe_label
 from scribejay.core.store import atomic_write_json, load_json, locked
 
-DEFAULT_CORRESPONDENCE_DIR = str(Path.home() / "Documents" / "ScribeJay" / "correspondence")
+DEFAULT_CORRESPONDENCE_DIR = str(Path.home() / "ScribeJay" / "correspondence")
 
 # Subjects that are machinery rather than correspondence. Everything ScribeJay
 # sends itself is already caught by the self-addressed rule below; this list is

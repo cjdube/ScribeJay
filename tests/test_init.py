@@ -168,6 +168,36 @@ def test_a_forbidden_folder_is_refused_and_re_asked(tmp_path, ollama_up, capsys)
     assert "will not write to" in capsys.readouterr().out
 
 
+def _protect(monkeypatch, root):
+    from scribejay.cli import settings_form
+    monkeypatch.setattr(settings_form, "PROTECTED_ROOTS", {root: "~/Documents"})
+
+
+def test_declining_a_protected_folder_re_asks_and_creates_nothing(
+        tmp_path, ollama_up, monkeypatch, capsys):
+    documents = tmp_path.resolve() / "Documents"
+    _protect(monkeypatch, documents)
+    answers = _script(tmp_path)
+    answers[0:1] = [str(documents / "ScribeJay"), "n", str(tmp_path / "journal")]
+
+    assert init.run(init.Console(answers=answers)) == 0
+    assert not documents.exists()
+    assert "Full Disk Access" in capsys.readouterr().out
+    assert _written()["output"]["learnings_dir"] == str((tmp_path / "journal").resolve())
+
+
+def test_a_protected_folder_can_still_be_chosen(tmp_path, ollama_up, monkeypatch):
+    """Warned, not forbidden: with Full Disk Access granted it works."""
+    documents = tmp_path.resolve() / "Documents"
+    _protect(monkeypatch, documents)
+    answers = _script(tmp_path)
+    # The correspondence default sits beside the journal, so it is asked too.
+    answers[0:2] = [str(documents / "ScribeJay"), "y", "", "y"]
+
+    assert init.run(init.Console(answers=answers)) == 0
+    assert (documents / "ScribeJay").is_dir()
+
+
 # ---- the model ---------------------------------------------------------------
 
 def test_choosing_a_cloud_backend_stores_the_key_in_the_keychain(tmp_path, monkeypatch):

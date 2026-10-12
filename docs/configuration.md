@@ -28,7 +28,7 @@ One JSON document, sections at the top level:
 ```json
 {
   "core":     { "timezone": "America/New_York" },
-  "output":   { "learnings_dir": "~/Documents/ScribeJay" },
+  "output":   { "learnings_dir": "~/ScribeJay" },
   "model":    { "ollama_model": "gemma4", "per_task": { "daily_commits": "gemini" } },
   "google":   { "calendar_id": "primary" },
   "persona":  { "user_name": "Robin" }

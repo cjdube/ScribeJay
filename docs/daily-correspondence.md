@@ -196,7 +196,7 @@ guesses. Three rules are pinned by tests:
 
 ## Where it writes, and why not the vault
 
-`CORRESPONDENCE_DIR`, default `~/Documents/ScribeJay/correspondence`.
+`CORRESPONDENCE_DIR`, default `~/ScribeJay/correspondence`.
 
 **Not `LEARNINGS_DIR`.** The journal folder is often an Obsidian vault feeding a
 note-taking pipeline, and anything dropped there can become an asserted note —

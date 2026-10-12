@@ -322,6 +322,27 @@ def test_a_symlink_into_a_forbidden_directory_is_refused(tmp_path, monkeypatch):
     assert errors and "will not write to" in errors[0]
 
 
+def test_a_folder_inside_a_protected_location_is_named(tmp_path, monkeypatch):
+    documents = tmp_path.resolve() / "Documents"
+    monkeypatch.setattr(settings_form, "PROTECTED_ROOTS",
+                        {documents: "~/Documents"})
+
+    assert settings_form.protected_folder(str(documents)) == "~/Documents"
+    assert settings_form.protected_folder(str(documents / "a" / "b")) == "~/Documents"
+    assert settings_form.protected_folder(str(tmp_path / "ScribeJay")) == ""
+
+
+def test_a_symlink_into_a_protected_location_is_named(tmp_path, monkeypatch):
+    documents = tmp_path.resolve() / "Documents"
+    documents.mkdir()
+    monkeypatch.setattr(settings_form, "PROTECTED_ROOTS",
+                        {documents: "~/Documents"})
+    link = tmp_path / "journal"
+    link.symlink_to(documents)
+
+    assert settings_form.protected_folder(str(link)) == "~/Documents"
+
+
 def test_an_empty_value_clears_back_to_the_default():
     settings_form.apply({"OLLAMA_MODEL": "llama9"})
     assert config.getenv("OLLAMA_MODEL") == "llama9"

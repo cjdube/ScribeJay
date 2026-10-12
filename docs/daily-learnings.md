@@ -3,7 +3,7 @@
 Two tasks, one shape: read recent activity from one channel (yesterday for Chrome;
 for YouTube, every day since the last finished run, see below), have the local
 model draft a short review of what it taught, and write one Markdown file per
-day into the journal folder (`LEARNINGS_DIR`, default `~/Documents/ScribeJay`).
+day into the journal folder (`LEARNINGS_DIR`, default `~/ScribeJay`).
 They share the exclusion-filter and compaction helpers in
 `scribejay/activity.py` and the write-or-email step in
 `scribejay/sinks/vault.py`.

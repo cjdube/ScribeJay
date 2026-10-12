@@ -174,12 +174,21 @@ def _ask_folder(console: Console, key: str, question: str, default: str) -> str:
     LaunchAgents), and this passes `create=True` through it rather than
     keeping a second copy of that list — the check runs before the mkdir, so
     a typo cannot make a folder somewhere it would then refuse to write.
+
+    A protected folder (~/Documents and the like) is asked about before the
+    mkdir for the same reason: answering no must leave nothing behind.
     """
     from scribejay.cli import settings_form
 
     setting = schema.get(key)
     while True:
         raw = console.ask(question, default)
+        place = settings_form.protected_folder(raw) if raw.strip() else ""
+        if place:
+            console.say(f"  {place} is closed to scheduled jobs unless Python "
+                        "has Full Disk Access, so pages saved there would fail.")
+            if not console.confirm("  Use it anyway?", default=False):
+                continue
         value, error = settings_form.validate_path(setting, raw, create=True)
         if error:
             console.say(f"  {error}")

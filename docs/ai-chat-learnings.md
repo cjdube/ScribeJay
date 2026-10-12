@@ -44,7 +44,7 @@ documented API, so its reader warns and skips when the expected shape drifts.
   injected environment/plugin/task context, reasoning, tools, and events are
   dropped. Codex CLI is not covered by this v1 reader.
 - **Gemini drop folder** (`SCRIBEJAY_GEMINI_CHATS_DIR`, default
-  `~/Documents/ScribeJay/gemini_inbox`) — Gemini has no local footprint, so drop an exported
+  `~/ScribeJay/gemini_inbox`) — Gemini has no local footprint, so drop an exported
   conversation (`.md`/`.txt`/`.json`, one file per chat) into this folder and it
   gets summarized once. `ai_chat_learnings_state.json` in `~/.scribejay` (or in
   `config/`, on a checkout that predates packaging and already has one there)
@@ -57,7 +57,7 @@ documented API, so its reader warns and skips when the expected shape drifts.
 ## Output
 
 One file per day, `AI-Chat-Learnings-<date>.md`, written to `LEARNINGS_DIR` (the
-journal folder, default `~/Documents/ScribeJay`), with one section per session:
+journal folder, default `~/ScribeJay`), with one section per session:
 
 ```
 ## AI Chat Learnings: July 12, 2026

@@ -124,6 +124,16 @@ def test_schema_default_matches_the_module_constant(key, constant):
     assert schema.default_for(key) == constant
 
 
+def test_no_folder_default_is_closed_to_scheduled_jobs():
+    """A default under ~/Documents saves nothing from launchd unless Python
+    has Full Disk Access, which a user who skipped Chrome never grants."""
+    from scribejay.cli import settings_form
+
+    for setting in schema.SETTINGS:
+        if setting.type == "path" and setting.default:
+            assert settings_form.protected_folder(setting.default) == "", setting.key
+
+
 def test_secret_keys_cover_the_aliases():
     # GOOGLE_API_KEY has no row of its own but is a real credential name the
     # Gemini backend reads, so the Keychain and the migration must both treat

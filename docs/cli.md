@@ -44,6 +44,12 @@ model answers. Google, Strava and ClickUp are not walked through here; it
 offers to open `scribejay settings` for those instead, because a wizard that
 asks eleven questions before writing anything is a wizard people quit.
 
+The default folder is `~/ScribeJay`. A folder under `~/Documents`,
+`~/Desktop`, `~/Downloads` or iCloud Drive gets a warning first: macOS closes
+those to scheduled jobs unless Python has Full Disk Access, so pages written
+there at 4:30 fail even though the wizard, running as your terminal, could
+write them. `doctor` gives the same WARN, for the Gemini drop folder too.
+
 Two things worth knowing.
 
 **Every answer is recorded, including "no".** Left unanswered, a source's

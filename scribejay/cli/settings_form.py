@@ -42,6 +42,27 @@ FORBIDDEN_ROOTS = (
     Path("/sbin"), Path("/etc"), Path("/private/etc"), Path("/var"),
 )
 
+# Folders macOS guards with a privacy prompt that a launchd job has no screen
+# to show, so a scheduled run is refused there unless its Python has Full Disk
+# Access. Warned about, not forbidden: a user who granted that can keep a vault
+# here. The wizard and doctor both run as the terminal, which usually *can*
+# reach these, so neither notices on its own — only the 4:30 run fails.
+PROTECTED_ROOTS = {
+    Path.home() / "Desktop": "~/Desktop",
+    Path.home() / "Documents": "~/Documents",
+    Path.home() / "Downloads": "~/Downloads",
+    Path.home() / "Library" / "Mobile Documents": "iCloud Drive",
+}
+
+
+def protected_folder(value: str) -> str:
+    """The protected location `value` sits in, or "" if it is in none."""
+    resolved = config.resolve_path(value).resolve()
+    for root, name in PROTECTED_ROOTS.items():
+        if resolved == root or root in resolved.parents:
+            return name
+    return ""
+
 
 class Group:
     """One box on the page: a feature's settings, plus the features it governs.

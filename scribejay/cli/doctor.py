@@ -165,16 +165,47 @@ def _folder(key: str, label: str, required: bool) -> Check:
         probe.unlink()
     except OSError as e:
         return Check(FAIL, label, f"{path} is not writable ({e})")
-    return Check(OK, label, str(path))
+    return _protected(label, path) or Check(OK, label, str(path))
+
+
+def _protected(label: str, path: Path) -> Check | None:
+    """WARN for a folder macOS closes to scheduled jobs.
+
+    The probe above ran as this terminal, which can usually reach ~/Documents,
+    so its pass says nothing about the launchd run. A WARN, not a FAIL: with
+    Full Disk Access granted to Python the folder works.
+    """
+    from scribejay.cli import settings_form
+
+    place = settings_form.protected_folder(str(path))
+    if not place:
+        return None
+    return Check(WARN, label,
+                 f"{path} is in {place}, which scheduled jobs cannot use "
+                 "unless Python has Full Disk Access. This check runs as your "
+                 "terminal, so it cannot tell. Move it, for example to "
+                 "~/ScribeJay")
+
+
+def gemini_drop_folder() -> Check:
+    """Read, never written, so there is no probe, and a missing folder is
+    normal: the source idles until a chat is dropped. Only where it is can be
+    wrong."""
+    label = "gemini drop folder"
+    path = config.resolve_path(config.getenv("SCRIBEJAY_GEMINI_CHATS_DIR"))
+    return _protected(label, path) or Check(OK, label, str(path))
 
 
 def folder_checks() -> list[Check]:
-    return [
+    checks = [
         _folder("LEARNINGS_DIR", "journal folder", required=True),
         _folder("CORRESPONDENCE_DIR", "correspondence folder",
                 required=features.enabled("gmail")),
         _folder("SCRIBEJAY_LOGS_DIR", "log folder", required=True),
     ]
+    if features.enabled("transcripts"):
+        checks.append(gemini_drop_folder())
+    return checks
 
 
 # ---- model ------------------------------------------------------------------

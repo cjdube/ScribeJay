@@ -124,6 +124,42 @@ def test_a_writable_folder_leaves_no_probe_file_behind(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
+def _protect(monkeypatch, root):
+    from scribejay.cli import settings_form
+    monkeypatch.setattr(settings_form, "PROTECTED_ROOTS", {root: "~/Documents"})
+
+
+def test_a_writable_folder_in_a_protected_location_warns(tmp_path, monkeypatch):
+    """The write probe runs as the terminal, so its pass cannot speak for the
+    launchd run — the location has to be reported on its own."""
+    journal = tmp_path.resolve() / "Documents" / "ScribeJay"
+    journal.mkdir(parents=True)
+    _protect(monkeypatch, tmp_path.resolve() / "Documents")
+    monkeypatch.setenv("LEARNINGS_DIR", str(journal))
+
+    check = doctor._folder("LEARNINGS_DIR", "journal", required=True)
+    assert check.status == doctor.WARN
+    assert "~/Documents" in check.detail and "Full Disk Access" in check.detail
+
+
+def test_the_gemini_drop_folder_warns_only_in_a_protected_location(tmp_path, monkeypatch):
+    _protect(monkeypatch, tmp_path.resolve() / "Documents")
+
+    monkeypatch.setenv("SCRIBEJAY_GEMINI_CHATS_DIR", str(tmp_path / "inbox"))
+    assert doctor.gemini_drop_folder().status == doctor.OK
+
+    monkeypatch.setenv("SCRIBEJAY_GEMINI_CHATS_DIR",
+                       str(tmp_path / "Documents" / "inbox"))
+    assert doctor.gemini_drop_folder().status == doctor.WARN
+
+
+def test_the_gemini_drop_folder_is_checked_only_when_transcripts_is_on(monkeypatch):
+    monkeypatch.setattr(doctor.features, "enabled", lambda name: name != "transcripts")
+    assert "gemini drop folder" not in [c.label for c in doctor.folder_checks()]
+    monkeypatch.setattr(doctor.features, "enabled", lambda name: True)
+    assert "gemini drop folder" in [c.label for c in doctor.folder_checks()]
+
+
 # ---- full disk access -------------------------------------------------------
 
 def test_no_chrome_is_not_a_problem(monkeypatch, tmp_path):
