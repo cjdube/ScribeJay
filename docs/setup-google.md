@@ -94,6 +94,12 @@ re-consent weekly, and `scribejay doctor` will tell you when it is time.
   consent flow opens a local callback port, which is what the desktop type is
   for.
 - Name it anything.
+- **Make a new one, even if another tool of yours already has a client in
+  this project.** Google ties a grant to the user *and* the client, and
+  `scribejay consent` revokes the old grant before asking again. Reuse
+  another tool's client and that revoke signs the other tool out too — this
+  happened on 2026-10-12, when ScribeJay still ran on a copy of Wren's
+  client. A second client in the same project is fine.
 
 Press **Create**, then **Download JSON** on the dialog that appears. You can
 download it again later from the client's own page.

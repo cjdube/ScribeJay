@@ -6,7 +6,9 @@ program running as the user can read, and a refresh token from a published app
 does not expire, so whatever it holds is what a stolen copy holds.
 Sharing a token file with another tool is a trap: whichever side runs its
 consent flow last overwrites the other's grant, and the broader grant is the
-one that silently breaks.
+one that silently breaks. Sharing an OAuth *client* is the same trap one level
+up: Google keys a grant on user + client, so consent()'s revoke signs out
+every tool on that client. ScribeJay gets a Desktop client of its own.
 
 First run opens a browser for consent and caches a token at GOOGLE_TOKEN_PATH.
 Subsequent runs (including unattended launchd runs) reuse/refresh that token
