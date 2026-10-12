@@ -29,6 +29,7 @@ from datetime import datetime
 from pathlib import Path
 
 from scribejay.core import config
+from scribejay.core.text import redact_secrets
 
 
 def claude_projects_dir() -> Path:
@@ -154,11 +155,17 @@ def _record_text(record) -> str | None:
     return f"{'User' if role == 'user' else 'Assistant'}: {text}"
 
 
-def _compact(turns: list[str], max_chars: int) -> str:
+def _compact(turns: list[str], max_chars: int, logger=None) -> str:
     """Join turns into one blob, trimming the middle if it exceeds max_chars. The
     head (what we set out to do) and tail (what came of it) are what a brief
-    accomplishments/learnings summary depends on, so preserve both ends."""
-    text = "\n\n".join(turns)
+    accomplishments/learnings summary depends on, so preserve both ends.
+
+    Secrets are redacted here because every transcript reaches a model through
+    this function, and before the trim so a key cannot be cut in half and slip
+    past the pattern."""
+    text, redacted = redact_secrets("\n\n".join(turns))
+    if redacted and logger:
+        logger.info(f"Redacted {redacted} secret(s) from a transcript before the model saw it")
     if len(text) <= max_chars:
         return text
     head = int(max_chars * 0.6)
@@ -166,7 +173,8 @@ def _compact(turns: list[str], max_chars: int) -> str:
     return f"{text[:head]}\n\n...[middle of conversation trimmed]...\n\n{text[-tail:]}"
 
 
-def _read_session_day(path: Path, start: datetime, end: datetime, max_chars: int) -> dict | None:
+def _read_session_day(path: Path, start: datetime, end: datetime, max_chars: int,
+                      logger=None) -> dict | None:
     """One session's text for the day in [start, end], or None if it had no
     (non-noise) activity that day. `start`/`end` are tz-aware local bounds."""
     try:
@@ -210,19 +218,19 @@ def _read_session_day(path: Path, start: datetime, end: datetime, max_chars: int
         "project": project or "unknown",
         "slug": slug or "",
         "started_at": first_ts,
-        "text": _compact(turns, max_chars),
+        "text": _compact(turns, max_chars, logger),
     }
 
 
 def fetch_claude_sessions(start: datetime, end: datetime,
-                          max_chars: int = DEFAULT_MAX_CHARS) -> list[dict]:
+                          max_chars: int = DEFAULT_MAX_CHARS, logger=None) -> list[dict]:
     """Every Claude Code session with activity between `start` and `end` (tz-aware
     local bounds), as [{"project", "slug", "started_at", "text"}], oldest first.
     A session active across several days appears once per day, carrying only that
     day's turns. Returns [] if the session store is absent (nothing to do)."""
     sessions = []
     for path in _session_files(start):
-        session = _read_session_day(path, start, end, max_chars)
+        session = _read_session_day(path, start, end, max_chars, logger)
         if session:
             sessions.append(session)
 
@@ -382,7 +390,7 @@ def _read_codex_session_day(path: Path, start: datetime, end: datetime,
         "project": Path(cwd).name if isinstance(cwd, str) and cwd else "unknown",
         "slug": "",
         "started_at": first_ts,
-        "text": _compact(turns, max_chars),
+        "text": _compact(turns, max_chars, logger),
     }
 
 
@@ -586,7 +594,8 @@ def gemini_dir() -> Path:
     return config.resolve_path(config.getenv("SCRIBEJAY_GEMINI_CHATS_DIR", DEFAULT_GEMINI_DIR))
 
 
-def fetch_gemini_chats(processed: dict, max_chars: int = DEFAULT_MAX_CHARS) -> list[dict]:
+def fetch_gemini_chats(processed: dict, max_chars: int = DEFAULT_MAX_CHARS,
+                       logger=None) -> list[dict]:
     """Unprocessed Gemini export files in the drop folder, as
     [{"name", "mtime", "text"}]. `processed` maps filename -> mtime already
     summarized; a file is re-summarized only if it's re-dropped (mtime changes).
@@ -611,5 +620,5 @@ def fetch_gemini_chats(processed: dict, max_chars: int = DEFAULT_MAX_CHARS) -> l
             continue
         if not text:
             continue
-        out.append({"name": path.name, "mtime": mtime, "text": _compact([text], max_chars)})
+        out.append({"name": path.name, "mtime": mtime, "text": _compact([text], max_chars, logger)})
     return out

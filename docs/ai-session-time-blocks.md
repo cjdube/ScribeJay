@@ -138,7 +138,8 @@ invisible to the dedup key, so dry-run first.
 Transcript text is untrusted input (it contains web and tool output that may carry
 prompt injection); the task only reads local files and writes a calendar event, and
 the blurb prompt treats transcript content as data, not instructions. It runs on the
-local model by design. `SCRIBEJAY_CLAUDE_TIME_BLOCKS_BACKEND` is retained as the
+local model by design. Known credential shapes are redacted before the blurb
+prompt is built — see [ai-chat-learnings.md](ai-chat-learnings.md#safety). `SCRIBEJAY_CLAUDE_TIME_BLOCKS_BACKEND` is retained as the
 legacy per-task override name; choosing a cloud backend sends transcript text from
 both supported agents off-device.
 

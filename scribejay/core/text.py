@@ -49,3 +49,30 @@ def safe_label(text, limit: int = MAX_LABEL_CHARS) -> str:
     # The ellipsis is inside the budget, so the result is never longer than
     # the caller asked for.
     return cleaned[:limit - 1].rstrip() + "…"
+
+
+# Credentials with a fixed, recognisable shape. A chat transcript holds what the
+# user pasted and what the assistant quoted back, and either can be a live key;
+# the transcript goes to the model, and the summary to a page other agents read.
+# Shape-matching only: a password or a key with no prefix gets through, so this
+# narrows the leak rather than closing it. A private key is cut to its END line,
+# or to the next blank line when the paste was truncated (base64 has none).
+_SECRET_PATTERNS = [
+    r"sk-(?:ant|proj|or)-[A-Za-z0-9_\-]{16,}",   # Anthropic, OpenAI, OpenRouter
+    r"sk_live_[A-Za-z0-9]{16,}",                  # Stripe
+    r"gh[pousr]_[A-Za-z0-9]{30,}",                # GitHub tokens
+    r"github_pat_[A-Za-z0-9_]{30,}",
+    r"AKIA[0-9A-Z]{16}",                          # AWS access key id
+    r"AIza[0-9A-Za-z_\-]{35}",                    # Google API key
+    r"xox[abprs]-[A-Za-z0-9\-]{10,}",             # Slack
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    r"(?:.*?-----END [A-Z ]*PRIVATE KEY-----|.*?(?=\n\s*\n)|.*\Z)",
+]
+_SECRETS = re.compile("|".join(_SECRET_PATTERNS), re.DOTALL)
+REDACTED = "[redacted]"
+
+
+def redact_secrets(text: str) -> tuple[str, int]:
+    """Replace every recognisable credential with REDACTED. Returns the text and
+    how many were replaced, so the caller can log the count — never the values."""
+    return _SECRETS.subn(REDACTED, text)

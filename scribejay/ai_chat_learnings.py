@@ -180,7 +180,7 @@ def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) ->
     """Build and persist one day's file. include_gemini is False for backfill
     runs (the drop folder has no reliable per-day dates, so it's only folded into
     the normal "yesterday" run)."""
-    claude = fetch_claude_sessions(start, end, max_chars)
+    claude = fetch_claude_sessions(start, end, max_chars, logger=logger)
     codex = fetch_codex_sessions(start, end, max_chars, logger=logger)
     logger.info(f"{len(claude)} Claude session(s) active on {day}")
     logger.info(f"{len(codex)} Codex session(s) active on {day}")
@@ -193,7 +193,7 @@ def _run_for_day(start, end, day, include_gemini, backend, max_chars, logger) ->
     gemini, processed = [], {}
     if include_gemini:
         processed = load_json(STATE_PATH, {"gemini_processed": {}}).get("gemini_processed", {})
-        gemini = fetch_gemini_chats(processed, max_chars)
+        gemini = fetch_gemini_chats(processed, max_chars, logger=logger)
         logger.info(f"{len(gemini)} new Gemini chat(s) in the drop folder")
 
     if not sessions and not gemini:

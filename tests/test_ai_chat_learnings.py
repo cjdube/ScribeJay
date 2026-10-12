@@ -80,7 +80,7 @@ def test_all_none_summaries_write_nothing(stubbed, monkeypatch):
 def test_gemini_chat_summarized_and_marked_processed(stubbed, monkeypatch):
     monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
     monkeypatch.setattr(ai, "fetch_gemini_chats",
-                        lambda processed, max_chars: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
+                        lambda processed, max_chars, logger=None: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
     assert ai.main() == 0
     assert "### Gemini · chatA" in stubbed["persists"][0]["content"]
     state = load_json(ai.STATE_PATH, {})
@@ -95,7 +95,7 @@ def test_a_failed_persist_leaves_the_gemini_chats_unprocessed(stubbed, monkeypat
     run skips them on name and mtime."""
     monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
     monkeypatch.setattr(ai, "fetch_gemini_chats",
-                        lambda processed, max_chars: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
+                        lambda processed, max_chars, logger=None: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
 
     def _both_sinks_failed(*a, **k):
         raise RuntimeError("vault write AND email fallback both failed")
@@ -112,7 +112,7 @@ def test_an_emailed_draft_leaves_the_gemini_chats_unprocessed(stubbed, monkeypat
     re-running should rebuild it with the Gemini sections, not without them."""
     monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
     monkeypatch.setattr(ai, "fetch_gemini_chats",
-                        lambda processed, max_chars: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
+                        lambda processed, max_chars, logger=None: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
     monkeypatch.setattr(ai, "persist_or_email",
                         lambda *a, **k: {"error": "vault folder missing"})
 
@@ -126,7 +126,7 @@ def test_a_chat_the_model_found_nothing_in_is_still_marked_processed(stubbed, mo
     is exactly what the watermark exists to stop."""
     monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
     monkeypatch.setattr(ai, "fetch_gemini_chats",
-                        lambda processed, max_chars: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
+                        lambda processed, max_chars, logger=None: [{"name": "chatA.md", "mtime": 123.0, "text": "stuff"}])
     monkeypatch.setattr(ai, "complete_text",
                         lambda **k: "**Accomplished**\n- None\n**Learned**\n- None")
 
@@ -229,7 +229,7 @@ def test_a_row_is_kept_while_its_file_is_there_and_dropped_once_it_is_gone(
 
     monkeypatch.setattr(ai, "fetch_claude_sessions", lambda *a, **k: [])
     monkeypatch.setattr(ai, "fetch_gemini_chats",
-                        lambda processed, max_chars:
+                        lambda processed, max_chars, logger=None:
                         [{"name": "new.md", "mtime": 3.0, "text": "stuff"}])
     assert ai.main() == 0
 
@@ -313,3 +313,31 @@ def test_a_gemini_filename_cannot_split_its_section(stubbed, monkeypatch):
                           "text": "User: hi"}])
     assert ai.main() == 0
     assert _heading_lines(stubbed["persists"][0]["content"]) == 1
+
+
+def test_a_secret_in_a_session_never_reaches_the_page(stubbed, monkeypatch, tmp_path):
+    """The whole path, model stubbed to echo its input onto the page: the worst
+    case, a model that quotes the transcript back verbatim."""
+    import json, logging, os
+    from datetime import date, timezone
+    from scribejay.sources import transcripts as ct
+    from tests.test_text import FAKE_SECRETS
+    monkeypatch.setattr(ai, "fetch_claude_sessions", ct.fetch_claude_sessions)
+    monkeypatch.setattr(ai, "complete_text", lambda **k: "- " + k["user_prompt"])
+    start = datetime(2024, 6, 1, tzinfo=timezone.utc)
+    end = datetime(2024, 6, 1, 23, 59, 59, tzinfo=timezone.utc)
+    project = ct.CLAUDE_PROJECTS_DIR / "-Users-x-Projects-MyApp"
+    project.mkdir(parents=True)
+    path = project / "sess.jsonl"
+    path.write_text("\n".join(json.dumps(
+        {"timestamp": f"2024-06-01T10:0{i}:00Z", "cwd": "/Users/x/Projects/MyApp",
+         "message": {"role": "user", "content": f"use {s} for this"}})
+        for i, s in enumerate(FAKE_SECRETS.values())))
+    os.utime(path, (end.timestamp(), end.timestamp()))
+
+    ai._run_for_day(start, end, date(2024, 6, 1), False, None, 20000,
+                    logging.getLogger("t"))
+
+    page = stubbed["persists"][0]["content"]
+    assert "[redacted]" in page
+    assert all(s not in page for s in FAKE_SECRETS.values())

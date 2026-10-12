@@ -461,3 +461,32 @@ def test_transcript_dirs_resolve_relative_settings_under_the_config_dir(monkeypa
     assert ct.claude_projects_dir() == tmp_path / "claude-under-config" / "projects"
     assert ct.codex_sessions_dir() == tmp_path / "codex-under-config" / "sessions"
     assert ct.gemini_dir() == tmp_path / "gemini-under-config"
+
+
+def test_secrets_are_redacted_before_any_model_sees_a_transcript(caplog):
+    """Every source passes through _compact, so this is where a pasted or quoted
+    key gets stopped. The log says how many, never what."""
+    from tests.test_text import FAKE_SECRETS
+    secrets = list(FAKE_SECRETS.values())
+    _write_session([
+        {"timestamp": _ts(1, 10, i), "cwd": "/Users/x/Projects/MyApp",
+         "message": {"role": "user" if i % 2 else "assistant", "content": f"key {s} here"}}
+        for i, s in enumerate(secrets)
+    ])
+    logger = logging.getLogger("redaction-test")
+    with caplog.at_level(logging.INFO, logger="redaction-test"):
+        sessions = ct.fetch_claude_sessions(START, END, logger=logger)
+
+    text = sessions[0]["text"]
+    assert all(s not in text for s in secrets)
+    assert text.count("[redacted]") == len(secrets)
+    assert f"Redacted {len(secrets)} secret(s)" in caplog.text
+    assert all(s not in caplog.text for s in secrets)
+
+
+def test_a_gemini_drop_file_is_redacted_too(tmp_path, monkeypatch):
+    from tests.test_text import FAKE_SECRETS
+    monkeypatch.setattr(ct, "gemini_dir", lambda: tmp_path)
+    (tmp_path / "chat.md").write_text(f"my token {FAKE_SECRETS['github']}")
+    [chat] = ct.fetch_gemini_chats({})
+    assert FAKE_SECRETS["github"] not in chat["text"]

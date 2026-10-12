@@ -112,3 +112,14 @@ prompt injection. The task only reads local files and writes markdown (no gated
 or consequential tools), and the summarizer treats transcript content as data,
 not instructions. Runs on the local model by design; `SCRIBEJAY_AI_CHAT_LEARNINGS_BACKEND`
 can opt into the cloud, but that would send transcript text off-device.
+
+**Secrets are redacted before the model sees a transcript.** A key you pasted,
+or one the assistant quoted back, would otherwise reach the summary, then the
+page, then everything that reads the vault. `_compact` in
+`scribejay/sources/transcripts.py` — the one step every Claude, Codex and Gemini
+transcript passes through — replaces anything shaped like a known credential
+with `[redacted]`: Anthropic, OpenAI and OpenRouter keys, Stripe live keys,
+GitHub tokens, AWS access key ids, Google API keys, Slack tokens and private-key
+PEM blocks (`redact_secrets` in `scribejay/core/text.py`). The log records how
+many, never what. It matches shapes only, so a plain password or a key with no
+known prefix still gets through. AI session time blocks share the same step.

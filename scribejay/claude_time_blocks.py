@@ -176,7 +176,7 @@ def _blurb(block: dict, backend, max_chars: int, logger) -> str:
         return _FALLBACK_BLURB
 
     user_prompt = (f"projects: {', '.join(block_projects(block))}\n\n"
-                   f"transcript:\n{_compact(turns, max_chars)}\n")
+                   f"transcript:\n{_compact(turns, max_chars, logger)}\n")
     raw = complete_text(
         system_prompt=BLURB_SYSTEM_PROMPT, user_prompt=user_prompt,
         logger=logger, backend=backend, think=False,
