@@ -4,9 +4,8 @@
 which jobs will run. That answers "what did I configure". It cannot answer the
 question a user actually has at 9am when yesterday's page is missing, because
 every one of the real causes lives outside those tables: consent was never
-given, the model host is down, the journal folder was renamed, Full Disk
-Access was revoked by an OS update, the plist is on disk but launchd never
-loaded it, the run started and died half way.
+given, the model host is down, the journal folder was renamed, the plist is
+on disk but launchd never loaded it, the run started and died half way.
 
 So this walks the whole path from settings to written page and reports each
 step as one line. Three outcomes and nothing in between:
@@ -33,14 +32,15 @@ tomorrow morning". `notify` is excluded from probing on purpose — testing it
 means sending a real push, and a diagnostic that pings your phone is a
 diagnostic people stop running.
 
-## The Full Disk Access caveat
+## Chrome history needs no permission
 
-macOS grants Full Disk Access per *application*, and a command typed into a
-terminal inherits the terminal's grant, not launchd's. So a passing FDA check
-here proves your terminal can read Chrome's history — strong evidence, not
-proof, that the 5:15 job can. When the check passes and the Chrome job is
-still empty, the log for that job is the tiebreaker, and this prints where it
-is.
+The wizard used to walk users through granting Full Disk Access to their
+terminal, which gave every command they ran access to everything and did
+nothing for the scheduled job, which runs as Python, not as the terminal.
+Measured on macOS 26.6 (2026-10-12): a launchd job with no Full Disk
+Access reads Chrome's history, while the same job is refused Safari's
+history and ~/Documents. So nothing is granted, and the
+check below only proves the file is there and is a database.
 """
 
 import argparse
@@ -111,19 +111,18 @@ def install_checks() -> list[Check]:
 
 # ---- permissions ------------------------------------------------------------
 
-def full_disk_access() -> Check:
+def chrome_history() -> Check:
     """Read one row out of Chrome's history database, the way the 5:15 job does.
 
     Opened `immutable=1` exactly as `sources/chrome.py` opens it, so a lock
     held by a running Chrome cannot make this report a permission problem that
-    is not there. Without Full Disk Access the open itself fails — the file is
-    readable to the OS and invisible to the process — which is why this runs a
-    real query rather than checking `os.access`, which would answer yes.
+    is not there. It runs a real query rather than checking `os.access`, which
+    answers yes to a file the process cannot actually open.
     """
     from scribejay.sources.chrome import HISTORY_PATH
 
     if not HISTORY_PATH.exists():
-        return Check(OFF, "full disk access",
+        return Check(OFF, "chrome history",
                      "Chrome is not installed — nothing to read")
     try:
         conn = sqlite3.connect(f"file:{HISTORY_PATH}?immutable=1", uri=True)
@@ -132,12 +131,14 @@ def full_disk_access() -> Check:
         finally:
             conn.close()
     except sqlite3.Error as e:
-        return Check(FAIL, "full disk access",
-                     f"cannot read Chrome history ({e}). Grant it in System "
-                     "Settings > Privacy & Security > Full Disk Access, to "
-                     "your terminal app and to "
-                     f"{sys.executable}")
-    return Check(OK, "full disk access", "Chrome history is readable")
+        # No grant is needed on the macOS this was measured on (see the module
+        # docstring). If an older one refuses the open, the job runs as this
+        # interpreter, so that is what to name — never the terminal.
+        return Check(FAIL, "chrome history",
+                     f"cannot read {HISTORY_PATH} ({e}). If macOS refused it, "
+                     "grant Full Disk Access in System Settings > Privacy & "
+                     f"Security to {sys.executable}, not to your terminal")
+    return Check(OK, "chrome history", "Chrome history is readable")
 
 
 # ---- folders ----------------------------------------------------------------
@@ -173,7 +174,7 @@ def _protected(label: str, path: Path) -> Check | None:
 
     The probe above ran as this terminal, which can usually reach ~/Documents,
     so its pass says nothing about the launchd run. A WARN, not a FAIL: with
-    Full Disk Access granted to Python the folder works.
+    a Files and Folders or Full Disk Access grant to Python the folder works.
     """
     from scribejay.cli import settings_form
 
@@ -182,8 +183,8 @@ def _protected(label: str, path: Path) -> Check | None:
         return None
     return Check(WARN, label,
                  f"{path} is in {place}, which scheduled jobs cannot use "
-                 "unless Python has Full Disk Access. This check runs as your "
-                 "terminal, so it cannot tell. Move it, for example to "
+                 "unless macOS has given Python access to it. This check runs "
+                 "as your terminal, so it cannot tell. Move it, for example to "
                  "~/ScribeJay")
 
 
@@ -449,7 +450,7 @@ def job_checks() -> list[Check]:
 
 SECTIONS = (
     ("INSTALL", lambda probe: install_checks()),
-    ("PERMISSIONS", lambda probe: [full_disk_access()]),
+    ("CHROME", lambda probe: [chrome_history()]),
     ("FOLDERS", lambda probe: folder_checks()),
     ("MODEL", lambda probe: model_checks()),
     ("GOOGLE", lambda probe: google_checks()),

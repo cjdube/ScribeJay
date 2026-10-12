@@ -35,7 +35,7 @@ def _no_side_effects(monkeypatch, tmp_path):
     monkeypatch.setattr(settings_server, "serve", lambda *a, **k: 0)
     monkeypatch.setattr(schedule, "install", lambda: 0)
     # Chrome's real history database is on the developer's machine; the
-    # wizard's disk-access step reads it for real.
+    # wizard's Chrome check reads it for real.
     monkeypatch.setattr("scribejay.sources.chrome.HISTORY_PATH", tmp_path / "no-chrome")
 
 
@@ -182,7 +182,7 @@ def test_declining_a_protected_folder_re_asks_and_creates_nothing(
 
     assert init.run(init.Console(answers=answers)) == 0
     assert not documents.exists()
-    assert "Full Disk Access" in capsys.readouterr().out
+    assert "closed to scheduled jobs" in capsys.readouterr().out
     assert _written()["output"]["learnings_dir"] == str((tmp_path / "journal").resolve())
 
 

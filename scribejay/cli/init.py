@@ -13,7 +13,7 @@ Six steps, in the order a user can answer them:
 
   1. what this is, and that Tier 0 needs no accounts
   2. where pages go — and this is the ONE place ScribeJay creates a folder
-  3. the Tier 0 sources, plus the Full Disk Access walkthrough
+  3. the Tier 0 sources, plus a check that Chrome's history is readable
   4. which model answers, and whether it is actually reachable
   5. the settings screen, for anyone who wants Tier 1 or Tier 2
   6. install the launchd jobs
@@ -59,16 +59,6 @@ It runs on your Mac. By default nothing is sent to a cloud model.
 The sources it starts with — browsing history, AI chat sessions, commits —
 need no accounts and no sign-ups. Google, Strava and ClickUp are optional and
 come later, from a settings screen.
-"""
-
-DISK_ACCESS_STEPS = """
-Chrome's history file is protected by macOS. To let ScribeJay read it:
-
-  1. Open System Settings
-  2. Privacy & Security  ->  Full Disk Access
-  3. Turn it on for your terminal app (Terminal, iTerm, Ghostty, ...)
-  4. Quit that app COMPLETELY and open it again — the permission only
-     takes effect on a fresh launch
 """
 
 
@@ -185,8 +175,9 @@ def _ask_folder(console: Console, key: str, question: str, default: str) -> str:
         raw = console.ask(question, default)
         place = settings_form.protected_folder(raw) if raw.strip() else ""
         if place:
-            console.say(f"  {place} is closed to scheduled jobs unless Python "
-                        "has Full Disk Access, so pages saved there would fail.")
+            console.say(f"  {place} is closed to scheduled jobs unless macOS "
+                        "has given Python access to it, so pages saved there "
+                        "would fail.")
             if not console.confirm("  Use it anyway?", default=False):
                 continue
         value, error = settings_form.validate_path(setting, raw, create=True)
@@ -250,14 +241,13 @@ def step_sources(console: Console) -> None:
                 config.set_value(key, value)
 
 
-def step_disk_access(console: Console) -> None:
-    """Full Disk Access cannot be scripted, so this walks it and then checks.
+def step_chrome_check(console: Console) -> None:
+    """Read Chrome's history once, the way the scheduled job does.
 
-    Checked rather than trusted, and checked by reading the database for real:
-    the permission is granted to the *terminal application*, takes effect only
-    on a fresh launch of it, and the failure mode is a task that runs happily
-    every morning and finds no history. A user who has just clicked the
-    checkbox and not relaunched will see this still fail, which is the point.
+    There is no permission to walk. This step used to have users grant Full
+    Disk Access to their terminal, which opened everything to every command
+    they ran and did nothing for the job, which runs as Python. See the
+    `doctor` module docstring for the measurement that retired it.
     """
     from scribejay.cli import doctor
 
@@ -265,16 +255,8 @@ def step_disk_access(console: Console) -> None:
         return
 
     console.say("\n--- Reading Chrome history ---")
-    while True:
-        check = doctor.full_disk_access()
-        if check.status != doctor.FAIL:
-            console.say(f"  ok — {check.detail}")
-            return
-        console.say(DISK_ACCESS_STEPS)
-        if not console.confirm("Check again?", default=True):
-            console.say("  Skipped. `scribejay doctor` will tell you when it "
-                        "starts working.")
-            return
+    check = doctor.chrome_history()
+    console.say(f"  {check.status} — {check.detail}")
 
 
 # ---- step 4: the model ------------------------------------------------------
@@ -366,11 +348,11 @@ def run(console: Console) -> int:
     config.flush()
     console.say(f"\nWrote {config.config_path()}")
 
-    # After the flush, because both of these read the settings back: the disk
+    # After the flush, because both of these read the settings back: the Chrome
     # check asks whether chrome is switched on, and the settings screen renders
     # the document.
     try:
-        step_disk_access(console)
+        step_chrome_check(console)
         step_model(console)
         config.flush()
 

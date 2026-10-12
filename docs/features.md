@@ -10,7 +10,7 @@ forever.
 
 | Feature | Tier | What it needs | Feeds |
 |---|---|---|---|
-| `chrome` | 0 | Full Disk Access | Daily Chrome learnings |
+| `chrome` | 0 | Chrome on this Mac | Daily Chrome learnings |
 | `transcripts` | 0 | Claude Code / Codex / Gemini on this Mac | AI chat learnings, AI Session Time Blocks |
 | `git` | 0 | your projects folder | Daily commits |
 | `google_calendar` | 1 | your own Google OAuth client | Calendar colorizer, AI Session Time Blocks, Strava download |

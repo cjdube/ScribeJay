@@ -319,8 +319,8 @@ SETTINGS: tuple[Setting, ...] = (
 
     # ---- chrome -------------------------------------------------------------
     # Chrome's history database path is not configurable today: chrome.py reads
-    # the standard profile location. It needs Full Disk Access, which is a
-    # permission, not a setting — the wizard walks it, doctor verifies it.
+    # the standard profile location. It needs no permission (measured — see
+    # cli/doctor.py); the wizard and doctor check that it opens.
     #
     # The rows below configure web fetch: reading a few of the day's pages so
     # the review can say what they said rather than guessing from a url. Not a

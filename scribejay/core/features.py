@@ -34,7 +34,7 @@ from scribejay.core import config
 # Credential tiers, in the order the wizard should walk them. Tier 0 needs no
 # account at all and is what ships on: a real journal — browsing, AI sessions,
 # commits — from a machine and nothing else.
-TIER_NONE = 0        # a permission at most (Full Disk Access)
+TIER_NONE = 0        # nothing: already on this Mac
 TIER_GOOGLE = 1      # the user creates their own Google Cloud OAuth client
 TIER_TOKEN = 2       # the user pastes one token
 
@@ -132,9 +132,8 @@ def configured(name: str) -> bool:
     "no" would keep the task silent until the process restarted.
     """
     if name == "chrome":
-        # Reading it is Full Disk Access, a permission — but the file existing
-        # is what says Chrome is installed at all, and that is the question
-        # here. `doctor` covers the permission.
+        # The file existing is what says Chrome is installed at all, and that
+        # is the question here. `doctor` checks that it actually opens.
         from scribejay.sources.chrome import HISTORY_PATH
 
         return HISTORY_PATH.exists()

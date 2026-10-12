@@ -92,8 +92,7 @@ into recorded answers, and `scribejay settings` changes them later. See
 There are three tiers of what a source costs you to set up:
 
 - **Tier 0 — nothing.** Chrome history, AI chat sessions, git commits. Already
-  on the machine. Chrome needs Full Disk Access, which the wizard walks you
-  through.
+  on the machine, and none needs a permission grant.
 - **Tier 1 — your own Google Cloud project.** Calendar, sent mail, YouTube
   Likes. Fifteen minutes, free, and unavoidable: see
   [docs/setup-google.md](docs/setup-google.md) for why and how.

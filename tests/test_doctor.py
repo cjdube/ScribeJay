@@ -139,7 +139,7 @@ def test_a_writable_folder_in_a_protected_location_warns(tmp_path, monkeypatch):
 
     check = doctor._folder("LEARNINGS_DIR", "journal", required=True)
     assert check.status == doctor.WARN
-    assert "~/Documents" in check.detail and "Full Disk Access" in check.detail
+    assert "~/Documents" in check.detail and "Python" in check.detail
 
 
 def test_the_gemini_drop_folder_warns_only_in_a_protected_location(tmp_path, monkeypatch):
@@ -160,22 +160,23 @@ def test_the_gemini_drop_folder_is_checked_only_when_transcripts_is_on(monkeypat
     assert "gemini drop folder" in [c.label for c in doctor.folder_checks()]
 
 
-# ---- full disk access -------------------------------------------------------
+# ---- chrome history ---------------------------------------------------------
 
 def test_no_chrome_is_not_a_problem(monkeypatch, tmp_path):
     monkeypatch.setattr("scribejay.sources.chrome.HISTORY_PATH", tmp_path / "gone")
-    assert doctor.full_disk_access().status == doctor.OFF
+    assert doctor.chrome_history().status == doctor.OFF
 
 
 def test_an_unreadable_history_database_fails(monkeypatch, tmp_path):
-    """What a revoked Full Disk Access looks like from inside the process: the
-    file is there and the open fails."""
+    """The file is there and the open fails. The advice names the interpreter
+    the job runs as — never the terminal, whose grant the job does not get."""
     fake = tmp_path / "History"
     fake.write_text("not a database")
     monkeypatch.setattr("scribejay.sources.chrome.HISTORY_PATH", fake)
-    check = doctor.full_disk_access()
+    check = doctor.chrome_history()
     assert check.status == doctor.FAIL
-    assert "Full Disk Access" in check.detail
+    assert doctor.sys.executable in check.detail
+    assert "not to your terminal" in check.detail
 
 
 def test_a_readable_history_database_passes(monkeypatch, tmp_path):
@@ -185,7 +186,7 @@ def test_a_readable_history_database_passes(monkeypatch, tmp_path):
     conn.commit()
     conn.close()
     monkeypatch.setattr("scribejay.sources.chrome.HISTORY_PATH", fake)
-    assert doctor.full_disk_access().status == doctor.OK
+    assert doctor.chrome_history().status == doctor.OK
 
 
 # ---- model ------------------------------------------------------------------

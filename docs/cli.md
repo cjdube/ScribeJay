@@ -39,14 +39,14 @@ scribejay init
 
 It asks where pages should go — **the one place ScribeJay ever creates a
 folder** — then walks the three sources that need no account (Chrome history,
-AI chat sessions, git commits), the Full Disk Access permission, and which
+AI chat sessions, git commits), a check that Chrome's history opens, and which
 model answers. Google, Strava and ClickUp are not walked through here; it
 offers to open `scribejay settings` for those instead, because a wizard that
 asks eleven questions before writing anything is a wizard people quit.
 
 The default folder is `~/ScribeJay`. A folder under `~/Documents`,
 `~/Desktop`, `~/Downloads` or iCloud Drive gets a warning first: macOS closes
-those to scheduled jobs unless Python has Full Disk Access, so pages written
+those to scheduled jobs unless macOS has given Python access, so pages written
 there at 4:30 fail even though the wizard, running as your terminal, could
 write them. `doctor` gives the same WARN, for the Gemini drop folder too.
 
@@ -74,7 +74,7 @@ scribejay doctor --probe    # also call every switched-on source for real
 
 `scribejay status` prints what you *configured*. Every real cause of a missing
 page lives outside that: consent was never given, Ollama is down, the vault got
-renamed, an OS update revoked Full Disk Access, the plist is on disk but
+renamed, the plist is on disk but
 launchd never loaded it, the run started and died half way. `doctor` walks the
 whole path and prints one line per step:
 
@@ -115,10 +115,12 @@ that is one people stop running.
 Nothing `doctor` does writes. A health check that repaired things would hide
 the fault you ran it to explain.
 
-**A note on Full Disk Access.** macOS grants it per *application*, and a
-command you type inherits your terminal's grant, not launchd's. A passing check
-is strong evidence the 4:15 job can read Chrome's history — not proof. When it
-passes and the page is still empty, the JOBS section names the log to read.
+**Chrome needs no Full Disk Access.** Measured on macOS 26.6 (2026-10-12): a
+launchd job with no Full Disk Access reads Chrome's history, while the same job
+is refused Safari's history and ~/Documents. The wizard no longer asks you to
+grant your terminal anything. If an older macOS refuses the read, `doctor`
+names the Python file the job runs as — grant that, never the terminal, whose
+grant opens everything to every command you type.
 
 ## `scribejay run`
 
