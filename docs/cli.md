@@ -131,7 +131,9 @@ on or off. It opens a browser, so it never runs on a schedule.
 It revokes the old grant at Google **before** it deletes the token file. A
 refresh token outlives its file, so deleting the file alone would leave the
 old, wider grant live. If Google refuses the revoke, nothing on disk changes
-and you can retry. [setup-google.md](setup-google.md#7-consent-once-in-a-browser)
+and you can retry. Once the revoke succeeds, a failed browser step (a box
+left unticked, a closed tab) leaves no token until `scribejay consent` runs
+again. [setup-google.md](setup-google.md#7-consent-once-in-a-browser)
 
 ## `scribejay run`
 

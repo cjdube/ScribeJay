@@ -144,11 +144,7 @@ def get_credentials() -> Credentials:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                if not creds_path.exists():
-                    raise FileNotFoundError(
-                        f"Missing {creds_path}. Download an OAuth client (Desktop app) JSON from "
-                        "Google Cloud Console and save it there — see scribejay/core/google.py docstring."
-                    )
+                _require_client_file(creds_path)
                 flow = InstalledAppFlow.from_client_secrets_file(
                     str(creds_path), wanted_scopes())
                 # Force the account chooser (prompt=select_account) so consent
@@ -163,6 +159,14 @@ def get_credentials() -> Credentials:
 
         _CACHED_CREDS = creds
         return creds
+
+
+def _require_client_file(creds_path) -> None:
+    if not creds_path.exists():
+        raise FileNotFoundError(
+            f"Missing {creds_path}. Download an OAuth client (Desktop app) JSON from "
+            "Google Cloud Console and save it there — see scribejay/core/google.py docstring."
+        )
 
 
 def build_service(api: str, version: str):
@@ -192,6 +196,9 @@ def consent() -> list[str]:
     scopes now granted. Opens a browser, so only ever run by hand.
     """
     global _CACHED_CREDS
+    # Checked before the revoke: once the old grant is gone, a missing client
+    # file would leave no token and no way to get one.
+    _require_client_file(config.resolve_path(config.getenv("GOOGLE_CREDENTIALS_PATH")))
     token_path = config.resolve_path(config.getenv("GOOGLE_TOKEN_PATH"))
     if token_path.exists():
         old = Credentials.from_authorized_user_file(str(token_path))

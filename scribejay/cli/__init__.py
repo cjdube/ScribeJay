@@ -93,6 +93,14 @@ def _cmd_consent(args, extra: list[str]) -> int:
           "The old grant, if any, is revoked before the browser opens.")
     try:
         granted = google.consent()
+    except Warning as e:
+        # oauthlib raises "Scope has changed" when a box on Google's consent
+        # screen was left unticked.
+        print(f"Consent failed: {e}")
+        print("Google granted fewer scopes than asked. Tick every box, or switch "
+              "that source off in `scribejay settings` and run consent again. "
+              "Your old grant is already revoked.")
+        return 1
     except Exception as e:
         print(f"Consent failed: {e}")
         return 1

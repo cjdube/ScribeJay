@@ -134,3 +134,19 @@ def test_schedule_dispatches_to_the_named_action(monkeypatch):
     for action in ("install", "remove", "status"):
         assert cli.main(["schedule", action]) == 0
     assert seen == ["install", "remove", "status"]
+
+
+def test_an_unticked_scope_box_gets_plain_guidance(monkeypatch, capsys):
+    """oauthlib's "Scope has changed" does not say what to do next."""
+    from scribejay.core import google
+
+    monkeypatch.setattr(google, "wanted_scopes", lambda: ["https://x/gmail.readonly"])
+
+    def refuse():
+        raise Warning("Scope has changed from a to b.")
+
+    monkeypatch.setattr(google, "consent", refuse)
+    assert cli.main(["consent"]) == 1
+    out = capsys.readouterr().out
+    assert "Tick every box" in out
+    assert "already revoked" in out

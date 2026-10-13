@@ -116,6 +116,9 @@ def token(tmp_path, monkeypatch):
     path.write_text('{"refresh_token": "r-old", "token": "a-old", "client_id": "c", '
                     '"client_secret": "s", "scopes": ["x"]}')
     monkeypatch.setenv("GOOGLE_TOKEN_PATH", str(path))
+    client = tmp_path / "credentials.json"
+    client.write_text("{}")
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_PATH", str(client))
     return path
 
 
@@ -155,3 +158,14 @@ def test_an_already_dead_token_does_not_block_consent(monkeypatch, token):
     _consent(monkeypatch, _Resp(400, '{"error": "invalid_token"}'), token)
     assert ga.consent() == ["y"]
     assert not token.exists()
+
+
+def test_a_missing_client_file_stops_consent_before_the_revoke(monkeypatch, token):
+    """Without the client file the browser step cannot run, so revoking first
+    would leave no token and no way to get one."""
+    calls = _consent(monkeypatch, _Resp(200), token)
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_PATH", str(token.parent / "absent.json"))
+    with pytest.raises(FileNotFoundError, match="absent.json"):
+        ga.consent()
+    assert calls == []
+    assert token.exists()
