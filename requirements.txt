@@ -10,6 +10,10 @@ google-auth-oauthlib==1.4.0
 # httplib2: core/google.py's timeout-bearing transport, also pulled in by the
 # Google client libs — pinned directly rather than left to float transitively.
 httplib2==0.32.0
+# urllib3: pulled in by requests, pinned directly because sources/web_fetch.py
+# streams untrusted pages through it, and 2.7.0 could loop forever or buffer
+# without bound on a hostile chunked response (PYSEC-2026-4176/4177).
+urllib3==2.8.0
 
 # Optional cloud backend (SCRIBEJAY_LLM_BACKEND=gemini). Imported lazily, only
 # when that backend is selected, so a purely local (Ollama) install never
