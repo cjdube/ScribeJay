@@ -68,7 +68,8 @@ channel and description, **not** transcripts. Each run catches up: it covers eve
 day since the last one it finished, oldest first, up to 14 days, so a week with the
 Mac off still gets its pages. The last finished day is kept in
 `youtube_learnings_state.json` in `~/.scribejay`. A YouTube fetch error stops the
-catch-up and that day is retried next run. `--date` and `--dry-run` never move
+catch-up and that day is retried next run. A vault-write failure also stops the
+catch-up: that day's draft is emailed once, and the day is retried next run. `--date` and `--dry-run` never move
 that marker. The model writes a short synthesis
 of what they teach; the list of the exact videos (verbatim titles, scheme-validated
 URLs) is appended **in Python**, not by the model, so the links are always real.

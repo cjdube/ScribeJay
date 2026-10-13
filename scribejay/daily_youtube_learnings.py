@@ -146,8 +146,10 @@ def build_prompt(day, videos: list) -> str:
 
 
 def run_day(day, logger, backend: str | None, dry_run: bool, warm) -> bool:
-    """Write one day. False when the fetch failed, so the day is not done.
-    `warm` loads the model, once per run however many days it covers."""
+    """Write one day. False when the fetch failed or the page did not reach
+    the vault (an emailed draft is not done: the drive is usually just
+    unplugged, and the next run should retry rather than email every missed
+    day). `warm` loads the model, once per run however many days it covers."""
     result = _fetch(day, logger)
     if "error" in result:
         logger.warning(f"YouTube fetch failed for {day}; it is retried next run")
@@ -179,12 +181,12 @@ def run_day(day, logger, backend: str | None, dry_run: bool, warm) -> bool:
         print(body)
         return True
 
-    persist_or_email(
+    result = persist_or_email(
         body, "Daily-YouTube", day,
         subject=f"YouTube Learnings (needs manual paste) - {day:%Y-%m-%d}",
         task_name="daily_youtube_learnings", logger=logger,
     )
-    return True
+    return "error" not in result
 
 
 def main() -> int:

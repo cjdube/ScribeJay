@@ -300,3 +300,15 @@ def test_model_is_warmed_once_across_a_catchup(catchup):
     assert yt.main() == 0
     assert len(catchup["persists"]) == 3
     assert catchup["warms"] == 1
+
+
+def test_a_vault_write_failure_stops_the_catchup(catchup, monkeypatch):
+    """An unplugged vault drive must cost one emailed draft, not one per missed
+    day: the marker stays put and the next run retries from that day."""
+    catchup["seed"](_days_back(3))
+    monkeypatch.setattr(yt, "persist_or_email",
+                        lambda content, prefix, day, subject, task_name, logger:
+                        catchup["persists"].append((prefix, content)) or {"error": "missing"})
+    assert yt.main() == 0
+    assert len(catchup["persists"]) == 1
+    assert catchup["stored"]() == "2026-10-08"
