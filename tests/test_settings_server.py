@@ -406,6 +406,13 @@ def test_test_feature_counts_rows(monkeypatch):
     assert "3 row(s)" in settings_form.test_feature("strava")
 
 
+def test_test_feature_counts_sessions_not_events(monkeypatch):
+    from scribejay.sources import transcripts
+    events = [{"session": "a"}] * 5 + [{"session": "b"}] * 3
+    monkeypatch.setattr(transcripts, "fetch_session_activity", lambda *a, **k: events)
+    assert settings_form.test_feature("transcripts").startswith("2 session(s)")
+
+
 # ---- the tab rail -------------------------------------------------------------
 # The rail is generated from `groups()`, so what is tested here is that the
 # three halves stay in step: a radio, a label that points at it, a panel it

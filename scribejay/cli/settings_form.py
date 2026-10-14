@@ -512,7 +512,9 @@ def test_feature(name: str) -> str:
 
     if name == "transcripts":
         from scribejay.sources.transcripts import fetch_session_activity
-        return f"{len(fetch_session_activity(start, end))} session(s) for yesterday"
+        # One entry per event, not per session — count distinct sessions.
+        sessions = {e["session"] for e in fetch_session_activity(start, end)}
+        return f"{len(sessions)} session(s) for yesterday"
 
     if name == "git":
         from scribejay.sources.git import collect_commits
