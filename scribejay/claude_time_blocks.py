@@ -30,12 +30,11 @@ import argparse
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scribejay.core import config, registry
-from scribejay.core.dates import local_timezone, prior_day
+from scribejay.core.dates import days_to_run
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
 from scribejay.sinks.calendar import SESSION_BLOCK_SOURCE_PREFIX, log_calendar_event
@@ -280,21 +279,7 @@ def main() -> int:
             return _run_for_day(start, end, day, gap, min_minutes, max_chars,
                                 backend, warm, dry_run, logger)
 
-        if args.date:
-            tz = ZoneInfo(local_timezone())
-            start = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=tz)
-            end = start.replace(hour=23, minute=59, second=59)
-            logger.info(f"Single day: {start.date()}")
-            run(start, end, start.date())
-        elif args.backfill > 0:
-            tz = ZoneInfo(local_timezone())
-            today = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-            for k in range(args.backfill, 0, -1):
-                start, end, day = prior_day(today - timedelta(days=k - 1))
-                logger.info(f"Backfill day {day}")
-                run(start, end, day)
-        else:
-            start, end, day = prior_day()
+        for start, end, day in days_to_run(args.date, args.backfill):
             logger.info(f"Day: {day}")
             run(start, end, day)
 

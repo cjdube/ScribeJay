@@ -446,7 +446,10 @@ def apply(fields: dict[str, str]) -> tuple[list[str], list[str]]:
         config.set_preference("calendar", calendar)
     if learnings is not None:
         config.set_preference("learnings", learnings)
-    config.flush()
+    try:
+        config.flush()
+    except RuntimeError as e:  # the file on disk did not load; see config.save
+        return [], [str(e)]
 
     saved = [f"Saved {len(staged)} setting(s) to {config.config_path()}"]
     if calendar is not None:

@@ -20,14 +20,12 @@ Usage:
 
 import argparse
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scribejay.core import config, registry
-from scribejay.core.dates import local_timezone, prior_day
+from scribejay.core.dates import days_to_run
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
 from scribejay.core.store import atomic_write_json, load_json, locked
@@ -243,7 +241,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--date", default=None,
                         help="summarize a single day YYYY-MM-DD (Claude + Codex) — "
-                             "one process per day is the gentle way to backfill history")
+                             "one process per day is the gentle way to backfill history. "
+                             "Rewrites that day's page WITHOUT its Gemini sections")
     parser.add_argument("--backfill", type=int, default=0,
                         help="summarize each of the last N days as a separate run "
                              "(Claude + Codex); default 0 = just yesterday")
@@ -261,27 +260,12 @@ def main() -> int:
         log_backend(logger, "ai_chat_learnings", backend)
         warm_model(logger=logger, backend=backend)
 
-        if args.date:
-            tz = ZoneInfo(local_timezone())
-            start = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=tz)
-            end = start.replace(hour=23, minute=59, second=59)
-            day = start.date()
-            logger.info(f"Single day: {day}")
-            _run_for_day(start, end, day, include_gemini=False,
-                         backend=backend, max_chars=max_chars, logger=logger)
-        elif args.backfill > 0:
-            tz = ZoneInfo(local_timezone())
-            today = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-            # Oldest day first, so the log reads chronologically as files land.
-            for k in range(args.backfill, 0, -1):
-                start, end, day = prior_day(today - timedelta(days=k - 1))
-                logger.info(f"Backfill day {day}")
-                _run_for_day(start, end, day, include_gemini=False,
-                             backend=backend, max_chars=max_chars, logger=logger)
-        else:
-            start, end, day = prior_day()
+        # Only the plain morning run reads the Gemini drop folder: a drop file
+        # has no reliable per-day date.
+        include_gemini = not (args.date or args.backfill > 0)
+        for start, end, day in days_to_run(args.date, args.backfill):
             logger.info(f"Day: {day}")
-            _run_for_day(start, end, day, include_gemini=True,
+            _run_for_day(start, end, day, include_gemini=include_gemini,
                          backend=backend, max_chars=max_chars, logger=logger)
 
         logger.info("AI chat learnings run complete")

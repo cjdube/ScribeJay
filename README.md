@@ -142,7 +142,7 @@ they do yesterday, which is the only day they are for. The six that do:
 
 | Job | Flags |
 |---|---|
-| `ai_chat_learnings` | `--date`, `--backfill N` |
+| `ai_chat_learnings` | `--date` ⚠️, `--backfill N` ⚠️ |
 | `claude_time_blocks` | `--date`, `--backfill N`, `--dry-run` |
 | `daily_chrome_learnings` | `--date`, `--backfill N`, `--dry-run`, `--web-fetch` |
 | `daily_commits` | `--date`, `--backfill N` |
@@ -160,8 +160,14 @@ written.** Re-running it over a day that already holds generated
 `claude-time:` blocks can shift the block boundaries, and the dedup key cannot
 reconcile the old shape with the new one — so dry-run first.
 [docs/ai-session-time-blocks.md](docs/ai-session-time-blocks.md) has the
-detail. The remaining tasks re-read a local file that does not shrink, so their
-backfills are safe.
+detail.
+
+⚠️ **`ai_chat_learnings` drops Gemini on a re-run.** Only the morning run reads
+the Gemini drop folder, so `--date` or `--backfill` over a day that already has
+a page rewrites it without its Gemini sections.
+[docs/ai-chat-learnings.md](docs/ai-chat-learnings.md) has the detail. The
+remaining tasks re-read a local file that does not shrink, so their backfills
+are safe.
 
 `--dry-run` exists only on `claude_time_blocks`, `daily_chrome_learnings`
 and `daily_youtube_learnings`.

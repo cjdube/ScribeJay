@@ -40,14 +40,12 @@ Usage:
 
 import argparse
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scribejay.core import registry
-from scribejay.core.dates import local_timezone, prior_day
+from scribejay.core.dates import days_to_run
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.correspondence import (
     _correspondence_dir,
@@ -78,6 +76,8 @@ def _messages(name: str, result: dict, day, logger):
         logger.warning(f"{name} failed for {day}: {result['error']}")
         return None
     logger.info(f"{name} -> {result['count']} message(s) on {day}")
+    if result.get("incomplete"):
+        logger.warning(f"{name} is incomplete for {day}: {result['incomplete']}")
     return result["messages"]
 
 
@@ -117,6 +117,13 @@ def _run_for_day(start, end, day, me, logger) -> None:
     # After the page, never before: the page states what was true at the start
     # of the run, and folding today in first would make every thread read as
     # already known and every age as zero.
+    #
+    # Only when both halves answered. Later runs read only their own day, so a
+    # reply missing from today's store row is never added: a thread he answered
+    # would sit in "gone quiet" as his turn for the store's full 90 days.
+    if sent is None or inbox is None:
+        logger.warning(f"Not remembering {day}'s threads: one Gmail half failed")
+        return
     remember_threads(threads, day)
 
 
@@ -151,22 +158,7 @@ def main() -> int:
             raise RuntimeError("could not read the mailbox owner's address from Gmail")
         logger.info(f"mailbox: {me}")
 
-        if args.date:
-            tz = ZoneInfo(local_timezone())
-            start = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=tz)
-            end = start.replace(hour=23, minute=59, second=59)
-            logger.info(f"Single day: {start.date()}")
-            _run_for_day(start, end, start.date(), me, logger)
-        elif args.backfill > 0:
-            tz = ZoneInfo(local_timezone())
-            today = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-            # Oldest day first, so the log reads chronologically as files land.
-            for k in range(args.backfill, 0, -1):
-                start, end, day = prior_day(today - timedelta(days=k - 1))
-                logger.info(f"Backfill day {day}")
-                _run_for_day(start, end, day, me, logger)
-        else:
-            start, end, day = prior_day()
+        for start, end, day in days_to_run(args.date, args.backfill):
             logger.info(f"Day: {day}")
             _run_for_day(start, end, day, me, logger)
 

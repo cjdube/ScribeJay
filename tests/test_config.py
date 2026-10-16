@@ -275,6 +275,18 @@ def test_a_failed_save_leaves_the_old_file_intact(monkeypatch, tmp_path):
     assert not list(tmp_path.glob(".*tmp")), "the temp file should be cleaned up"
 
 
+def test_a_save_never_overwrites_a_file_that_did_not_load(monkeypatch, tmp_path):
+    # A typo loads as {}; saving that would erase every setting the user had.
+    monkeypatch.setenv("SCRIBEJAY_CONFIG_DIR", str(tmp_path))
+    broken = '{"persona": {"name": "Craig"},}\n'
+    (tmp_path / "config.json").write_text(broken)
+    prefs.reload()
+    prefs.set_value("TIMEZONE", "UTC")
+    with pytest.raises(RuntimeError, match="not saving"):
+        prefs.flush()
+    assert (tmp_path / "config.json").read_text() == broken
+
+
 # ---- resolve_path -------------------------------------------------------------
 # A relative path setting meant "beside the checkout" for as long as ScribeJay
 # was only ever a checkout. Installed with `uv tool install`, the package sits

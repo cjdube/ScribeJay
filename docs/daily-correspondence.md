@@ -213,7 +213,9 @@ because that thread is the whole point of the section.
 **One failing fetcher still writes the other half, with a WARNING.** A dead
 source reads as an empty day to its caller, but never silently — that line is
 what separates a missing page caused by a broken API from one caused by a quiet
-day.
+day. That day is **not** folded into the thread store: a later run reads only its
+own day, so a reply the failed half never saw would leave the thread as his turn
+for the store's full 90 days.
 
 **Both fetchers failing writes nothing.** A page built from two dead sources
 reads as a day he spoke to nobody, which is a different day. `_messages` keeps a

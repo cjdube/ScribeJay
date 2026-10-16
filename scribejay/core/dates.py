@@ -46,6 +46,20 @@ def prior_day(now: datetime | None = None) -> tuple[datetime, datetime, "date"]:
     return start, end, start.date()
 
 
+def days_to_run(date_arg: str | None, backfill: int) -> list:
+    """The (start, end, day) triples a task's --date / --backfill flags ask
+    for: the one day named, else each of the last `backfill` days oldest first
+    (so the log reads chronologically as files land), else yesterday."""
+    tz = ZoneInfo(local_timezone())
+    if date_arg:
+        start = datetime.strptime(date_arg, "%Y-%m-%d").replace(tzinfo=tz)
+        return [(start, start.replace(hour=23, minute=59, second=59), start.date())]
+    if backfill > 0:
+        now = datetime.now(tz)
+        return [prior_day(now - timedelta(days=k - 1)) for k in range(backfill, 0, -1)]
+    return [prior_day()]
+
+
 # Weekday name -> Python weekday() index (Mon=0).
 _WEEKDAYS = {
     "monday": 0, "mon": 0,

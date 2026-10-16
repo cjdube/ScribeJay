@@ -107,17 +107,22 @@ def _load(path: Path) -> dict:
 
     Deliberately does NOT quarantine the file the way store.load_json does: a
     settings file is hand-editable, and moving a user's config aside because
-    they left a trailing comma would turn a typo into lost configuration."""
+    they left a trailing comma would turn a typo into lost configuration.
+    For the same reason it records the failure in LOAD_ERROR, which save()
+    refuses to write over."""
+    global LOAD_ERROR
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         logger.error(f"could not load preferences from {path}: {e}")
+        LOAD_ERROR = f"{path} is unreadable ({e})"
         STARTUP_WARNINGS.append(f"settings file {path} is unreadable ({e}) — using defaults")
         return {}
     if not isinstance(data, dict):
         logger.error(f"preferences file {path} is not a JSON object")
+        LOAD_ERROR = f"{path} is not a JSON object"
         STARTUP_WARNINGS.append(f"settings file {path} is not a JSON object — using defaults")
         return {}
     return data
@@ -152,12 +157,16 @@ def resolve_path(value: str) -> Path:
 
 CONFIG: dict = {}
 PREFS: dict = {}
+# Why the settings file could not be read, or None. A file that failed to load
+# reads as {}, and saving that over it would erase every setting in it.
+LOAD_ERROR: str | None = None
 
 
 def reload() -> None:
     """Re-read the settings file. Called at import, and again by anything that
     has just written it (the migration, the settings screen)."""
-    global CONFIG, PREFS
+    global CONFIG, PREFS, LOAD_ERROR
+    LOAD_ERROR = None
     CONFIG = _load(config_path())
     merged = {name: schema.structured_default(name) for name in _PREF_SECTIONS}
     for name in _PREF_SECTIONS:
@@ -263,7 +272,13 @@ def save(data: dict) -> None:
 
     Atomic because a torn write would leave a user with no working config after
     a crash mid-save; 0600 because even without secrets this file names every
-    folder ScribeJay touches."""
+    folder ScribeJay touches.
+
+    Refuses when the file on disk could not be read: what is in memory is then
+    the empty stand-in, not the user's settings."""
+    if LOAD_ERROR:
+        raise RuntimeError(f"not saving: {LOAD_ERROR}. Fix the file by hand, "
+                           "then try again — saving now would erase it.")
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     tmp = path.with_name(f".{path.name}.tmp")

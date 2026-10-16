@@ -150,3 +150,27 @@ def test_fetch_strava_resolves_yesterday_in_the_configured_zone(monkeypatch):
     strava.fetch_strava(date="yesterday")
 
     assert seen["today"] == datetime.now(ZoneInfo("Pacific/Kiritimati")).date()
+
+
+def test_authorize_stores_the_token_in_the_keychain_and_never_prints_it(
+        monkeypatch, capsys):
+    stored = {}
+    monkeypatch.setattr(strava, "resolve_key", lambda name, arg=None: "x")
+    monkeypatch.setattr("builtins.input", lambda prompt: "code")
+    monkeypatch.setattr(strava.requests, "post",
+                        lambda *a, **k: _Resp({"refresh_token": "rt-secret"}))
+    monkeypatch.setattr(strava.secrets, "set",
+                        lambda name, value: stored.update({name: value}) or True)
+
+    assert strava._authorize() == 0
+    assert stored == {"STRAVA_REFRESH_TOKEN": "rt-secret"}
+    assert "rt-secret" not in capsys.readouterr().out
+
+
+def test_authorize_fails_when_the_keychain_refuses(monkeypatch):
+    monkeypatch.setattr(strava, "resolve_key", lambda name, arg=None: "x")
+    monkeypatch.setattr("builtins.input", lambda prompt: "code")
+    monkeypatch.setattr(strava.requests, "post",
+                        lambda *a, **k: _Resp({"refresh_token": "rt-secret"}))
+    monkeypatch.setattr(strava.secrets, "set", lambda name, value: False)
+    assert strava._authorize() == 1

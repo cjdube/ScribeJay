@@ -236,6 +236,22 @@ def test_one_failing_half_still_writes_the_other(stubbed_run, monkeypatch, capsy
     assert any("fetch_inbox_metadata failed" in m for m in _messages(capsys))
 
 
+def test_an_incomplete_half_is_a_warning(stubbed_run, monkeypatch, capsys):
+    monkeypatch.setattr(dc, "fetch_inbox_metadata", lambda *a, **k: {
+        "count": 0, "messages": [], "incomplete": "more than 100 matched"})
+    assert dc.main() == 0
+    assert any("fetch_inbox_metadata is incomplete" in m for m in _messages(capsys))
+
+
+def test_one_failing_half_is_not_remembered(stubbed_run, monkeypatch):
+    # The sent half alone would store thread T as answered-never-arrived; with
+    # the inbox half gone the same day, a reply would read as never sent.
+    from scribejay import correspondence as co
+    monkeypatch.setattr(dc, "fetch_inbox_metadata", lambda *a, **k: {"error": "boom"})
+    assert dc.main() == 0
+    assert "T" not in co.load_threads()
+
+
 def test_both_halves_failing_writes_nothing(stubbed_run, monkeypatch):
     """A page built from two dead sources reads as a day he spoke to nobody.
     That is a different day, and the record must not claim it.

@@ -102,8 +102,13 @@ an entry is never silently lost (same contract as the other learnings tasks).
 and Codex sessions), oldest first, each writing its own dated file. Gemini is
 skipped because a drop file has no reliable per-day date. Model calls are
 sequential, never parallel. To be even gentler on the on-device model, backfill
-day-by-day with `--date` in separate processes; both write the same idempotent
+day-by-day with `--date` in separate processes; both write the same
 `AI-Chat-Learnings-<date>.md`.
+
+**A re-run drops that day's Gemini sections.** The morning run is the only one
+that reads the drop folder, and it marks each chat done once the page is in the
+vault. `--date` or `--backfill` over a day that already has a page rewrites it
+from Claude and Codex alone. Copy the page first if its Gemini part matters.
 
 ## Safety
 

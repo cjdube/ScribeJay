@@ -364,6 +364,18 @@ def test_nothing_is_written_when_any_field_is_invalid():
     assert config.getenv("OLLAMA_MODEL") == "keepme"
 
 
+def test_a_settings_file_that_did_not_load_is_not_saved_over():
+    path = config.config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{not json")
+    config.reload()
+
+    saved, errors = settings_form.apply({"OLLAMA_MODEL": "changed"})
+
+    assert not saved and "not saving" in errors[0]
+    assert path.read_text() == "{not json"
+
+
 # ---- the form is built from the tables ------------------------------------------
 
 def test_every_non_secret_setting_gets_a_field():

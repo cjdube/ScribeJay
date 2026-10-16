@@ -12,7 +12,7 @@ steer a tool-calling model's argument choices and ScribeJay never calls tools.
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from scribejay.core.dates import local_timezone, prior_day, resolve_date
+from scribejay.core.dates import days_to_run, local_timezone, prior_day, resolve_date
 
 TODAY = date(2026, 7, 7)  # a Tuesday
 _TZ = ZoneInfo("America/New_York")
@@ -184,6 +184,24 @@ def test_prior_day_returns_yesterday_full_span():
 def test_prior_day_crosses_month_boundary():
     start, end, day = prior_day(now=datetime(2026, 8, 1, 5, 0, tzinfo=_TZ))
     assert day == date(2026, 7, 31)
+
+
+def test_days_to_run_date_is_the_whole_named_day(monkeypatch):
+    monkeypatch.setenv("TIMEZONE", "America/New_York")
+    [(start, end, day)] = days_to_run("2026-08-21", 0)
+    assert day == date(2026, 8, 21)
+    assert (start.hour, end.hour, end.minute, end.second) == (0, 23, 59, 59)
+    assert str(start.tzinfo) == "America/New_York"
+
+
+def test_days_to_run_backfill_ends_yesterday_oldest_first():
+    days = [day for _, _, day in days_to_run(None, 3)]
+    yesterday = prior_day()[2]
+    assert days == [date.fromordinal(yesterday.toordinal() - n) for n in (2, 1, 0)]
+
+
+def test_days_to_run_defaults_to_yesterday():
+    assert days_to_run(None, 0) == [prior_day()]
 
 
 def test_local_timezone_honors_override(monkeypatch):

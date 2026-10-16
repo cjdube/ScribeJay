@@ -14,7 +14,7 @@ Usage:
     python -m scribejay.sources.strava --date 2026-05-01
     python -m scribejay.sources.strava --authorize        (one-time token setup)
 
-Key resolution order: --arg > config/.env file > env var
+Key resolution order: --arg > env var > macOS Keychain (core/http.py:resolve_key)
 """
 
 import argparse
@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from scribejay.core import secrets
 from scribejay.core.dates import local_timezone, resolve_date
 from scribejay.core.http import load_env, print_result, resolve_key
 
@@ -66,8 +67,8 @@ def _get_activities(
 
     if not (client_id and client_secret and refresh_token):
         raise RuntimeError(
-            "Missing Strava credentials. Set STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, and "
-            "STRAVA_REFRESH_TOKEN in config/.env (run `python -m scribejay.sources.strava --authorize`)."
+            "Missing Strava credentials. Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in "
+            "`scribejay settings`, then run `python -m scribejay.sources.strava --authorize`."
         )
 
     access_token = _get_access_token(client_id, client_secret, refresh_token)
@@ -162,13 +163,13 @@ def fetch_strava(
 
 
 def _authorize() -> int:
-    """One-time flow: obtain a refresh token to paste into config/.env."""
+    """One-time flow: obtain a refresh token and store it in the Keychain."""
     client_id = resolve_key("STRAVA_CLIENT_ID")
     client_secret = resolve_key("STRAVA_CLIENT_SECRET")
     if not (client_id and client_secret):
         print(
-            "Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in config/.env first "
-            "(from https://www.strava.com/settings/api).",
+            "Set STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET in `scribejay settings` "
+            "first (from https://www.strava.com/settings/api).",
             file=sys.stderr,
         )
         return 1
@@ -204,9 +205,12 @@ def _authorize() -> int:
         print(f"Token exchange failed ({response.status_code}): {response.text}", file=sys.stderr)
         return 1
 
-    refresh_token = response.json().get("refresh_token")
-    print("\nSuccess. Add this line to config/.env:\n")
-    print(f"   STRAVA_REFRESH_TOKEN={refresh_token}")
+    # Straight into the Keychain: a credential never goes in a file, and
+    # printing it would leave it in the terminal's scrollback.
+    if not secrets.set("STRAVA_REFRESH_TOKEN", response.json().get("refresh_token")):
+        print("Could not store STRAVA_REFRESH_TOKEN in the Keychain.", file=sys.stderr)
+        return 1
+    print("\nSuccess. STRAVA_REFRESH_TOKEN is stored in the Keychain.")
     return 0
 
 

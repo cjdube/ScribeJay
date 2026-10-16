@@ -71,7 +71,10 @@ class _FakeMessages:
         if self.gmail.list_error is not None:
             return _Exec(self.gmail.list_error)
         ids = self.gmail.search_results[:maxResults]
-        return _Exec({"messages": [{"id": i} for i in ids]})
+        page = {"messages": [{"id": i} for i in ids]}
+        if len(self.gmail.search_results) > maxResults:
+            page["nextPageToken"] = "next"
+        return _Exec(page)
 
 
 class _FakeGmail:
@@ -199,6 +202,7 @@ def test_one_unreadable_message_does_not_cost_the_day(gmail):
     result = gmail_source.fetch_sent_metadata(_START, _END)
     assert result["count"] == 1
     assert result["messages"][0]["message_id"] == "s2"
+    assert result["incomplete"] == "1 message(s) could not be read"
 
 
 def test_gmail_being_down_is_an_error_dict_not_a_crash(gmail):
@@ -211,14 +215,16 @@ def test_gmail_being_down_is_an_error_dict_not_a_crash(gmail):
 
 def test_a_day_with_no_sent_mail_is_empty_not_an_error(gmail):
     gmail.search_results = []
-    assert gmail_source.fetch_sent_metadata(_START, _END) == {"messages": [], "count": 0}
+    assert gmail_source.fetch_sent_metadata(_START, _END) == \
+        {"messages": [], "count": 0, "incomplete": ""}
 
 
 def test_the_result_is_capped(gmail):
     gmail.messages_by_id = {f"s{i}": _sent(message_id=f"s{i}") for i in range(200)}
     gmail.search_results = [f"s{i}" for i in range(200)]
-    gmail_source.fetch_sent_metadata(_START, _END)
+    result = gmail_source.fetch_sent_metadata(_START, _END)
     assert gmail.list_calls[0]["maxResults"] == gmail_source.SENT_MAX_RESULTS
+    assert "oldest were dropped" in result["incomplete"]
 
 
 # --------------------------------------------------------------------------- #
@@ -377,7 +383,7 @@ def test_inbox_gmail_being_down_is_an_error_dict_not_a_crash(gmail):
 
 def test_a_day_with_no_inbound_mail_is_empty_not_an_error(gmail):
     gmail.search_results = []
-    assert gmail_source.fetch_inbox_metadata(_START, _END) == {"messages": [], "count": 0}
+    assert gmail_source.fetch_inbox_metadata(_START, _END) == {"messages": [], "count": 0, "incomplete": ""}
 
 
 def test_the_inbox_result_is_capped(gmail):

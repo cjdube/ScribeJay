@@ -121,7 +121,7 @@ def _fetch_rows(query: str, wanted_headers: tuple, limit: int, build) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
-    rows = []
+    rows, unreadable = [], 0
     for stub in listed.get("messages") or []:
         try:
             message = _service().users().messages().get(
@@ -129,11 +129,19 @@ def _fetch_rows(query: str, wanted_headers: tuple, limit: int, build) -> dict:
                 metadataHeaders=list(wanted_headers)).execute()
         except Exception:
             # One unreadable message must not cost the day's record.
+            unreadable += 1
             continue
         rows.append(build(message, _headers(message.get("payload") or {},
                                             wanted_headers)))
     rows.sort(key=lambda r: r["date"])
-    return {"messages": rows, "count": len(rows)}
+    # A day that returns less than Gmail holds must say so, or it reads as a
+    # quieter day. Gmail lists newest first, so the cap drops the morning.
+    missing = []
+    if unreadable:
+        missing.append(f"{unreadable} message(s) could not be read")
+    if listed.get("nextPageToken"):
+        missing.append(f"more than {limit} matched; the oldest were dropped")
+    return {"messages": rows, "count": len(rows), "incomplete": "; ".join(missing)}
 
 
 def _sent_row(message: dict, headers: dict) -> dict:

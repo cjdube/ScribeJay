@@ -26,14 +26,12 @@ Usage:
 
 import argparse
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scribejay.core import config, features, registry
-from scribejay.core.dates import local_timezone, prior_day
+from scribejay.core.dates import days_to_run
 from scribejay.core.logs import notify_failure, setup_logger
 from scribejay.core.model import backend as scribejay_backend, complete_text, log_backend, warm_model
 from scribejay.journal import (closed_tasks_section, commit_totals_line,
@@ -212,22 +210,7 @@ def main() -> int:
                 warm_model(logger=logger, backend=backend)
                 warmed.append(True)
 
-        if args.date:
-            tz = ZoneInfo(local_timezone())
-            start = datetime.strptime(args.date, "%Y-%m-%d").replace(tzinfo=tz)
-            end = start.replace(hour=23, minute=59, second=59)
-            logger.info(f"Single day: {start.date()}")
-            _run_for_day(start, end, start.date(), backend, warm, logger)
-        elif args.backfill > 0:
-            tz = ZoneInfo(local_timezone())
-            today = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-            # Oldest day first, so the log reads chronologically as files land.
-            for k in range(args.backfill, 0, -1):
-                start, end, day = prior_day(today - timedelta(days=k - 1))
-                logger.info(f"Backfill day {day}")
-                _run_for_day(start, end, day, backend, warm, logger)
-        else:
-            start, end, day = prior_day()
+        for start, end, day in days_to_run(args.date, args.backfill):
             logger.info(f"Day: {day}")
             _run_for_day(start, end, day, backend, warm, logger)
 
