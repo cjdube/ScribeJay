@@ -116,6 +116,12 @@ def main() -> int:
             print(f"Settings already live in {config.config_path()}.")
         return 0
 
+    # Before the Keychain is touched: config.save refuses this file anyway.
+    if config.LOAD_ERROR:
+        print(f"{config.LOAD_ERROR}. Fix it by hand, then run this again. "
+              "Nothing was changed.", file=sys.stderr)
+        return 1
+
     settings, creds, per_task, unknown = _classify(dotenv_values(env_path()))
 
     print(f"Reading {env_path()}\n")

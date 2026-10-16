@@ -136,6 +136,19 @@ def test_a_keychain_failure_stops_before_the_env_is_renamed(env_file, monkeypatc
     assert not migrate.retired_env_path().exists()
 
 
+def test_a_settings_file_that_did_not_load_stops_before_the_keychain(
+        env_file, stored, tmp_path, monkeypatch, capsys):
+    settings = tmp_path / "settings" / "config.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text('{"core": {},}')
+    config.reload()
+    env_file.write_text("OLLAMA_MODEL=llama9\nSTRAVA_CLIENT_SECRET=shhh\n")
+    assert _run(monkeypatch) == 1
+    assert "Fix it by hand" in capsys.readouterr().err
+    assert stored == {}
+    assert env_file.exists()
+
+
 def test_no_keychain_at_all_stops_before_anything_moves(env_file, tmp_path, monkeypatch):
     monkeypatch.setattr(secrets, "available", lambda: False)
     env_file.write_text("STRAVA_CLIENT_SECRET=shhh\n")

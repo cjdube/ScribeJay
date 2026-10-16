@@ -279,6 +279,16 @@ def test_main_turns_an_abort_into_exit_one(monkeypatch, capsys):
     assert "Nothing was changed" in capsys.readouterr().err
 
 
+def test_a_settings_file_that_did_not_load_stops_before_the_first_question(capsys):
+    """config.save refuses such a file, so asking anything would waste every answer."""
+    config.config_path().parent.mkdir(parents=True, exist_ok=True)
+    config.config_path().write_text('{"core": {},}')
+    config.reload()
+    assert init.run(init.Console(answers=[])) == 1
+    assert "Fix it by hand" in capsys.readouterr().out
+    assert config.config_path().read_text() == '{"core": {},}'
+
+
 def test_declining_the_overwrite_of_an_existing_settings_file(tmp_path, capsys):
     config.set_value("OLLAMA_MODEL", "keepme")
     config.flush()

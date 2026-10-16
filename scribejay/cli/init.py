@@ -333,6 +333,12 @@ def run(console: Console) -> int:
     console.say(BANNER)
     console.say(f"Settings will be written to {config.config_path()}")
 
+    # Before the first question: config.save refuses this file, so every answer
+    # would be lost at the flush.
+    if config.LOAD_ERROR:
+        console.say(f"\n{config.LOAD_ERROR}. Fix it by hand, then run this again.")
+        return 1
+
     if config.config_path().exists():
         console.say("\nThat file already exists. This will update it, keeping "
                     "anything you are not asked about.")
