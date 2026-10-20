@@ -109,7 +109,9 @@ def _load(path: Path) -> dict:
     settings file is hand-editable, and moving a user's config aside because
     they left a trailing comma would turn a typo into lost configuration.
     For the same reason it records the failure in LOAD_ERROR, which save()
-    refuses to write over."""
+    refuses to write over — but only for the settings file itself: migrate
+    reads the legacy preferences.json through here too, and that file is
+    never written."""
     global LOAD_ERROR
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -117,13 +119,15 @@ def _load(path: Path) -> dict:
         return {}
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         logger.error(f"could not load preferences from {path}: {e}")
-        LOAD_ERROR = f"{path} is unreadable ({e})"
-        STARTUP_WARNINGS.append(f"settings file {path} is unreadable ({e}) — using defaults")
+        if path == config_path():
+            LOAD_ERROR = f"{path} is unreadable ({e})"
+            STARTUP_WARNINGS.append(f"settings file {path} is unreadable ({e}) — using defaults")
         return {}
     if not isinstance(data, dict):
         logger.error(f"preferences file {path} is not a JSON object")
-        LOAD_ERROR = f"{path} is not a JSON object"
-        STARTUP_WARNINGS.append(f"settings file {path} is not a JSON object — using defaults")
+        if path == config_path():
+            LOAD_ERROR = f"{path} is not a JSON object"
+            STARTUP_WARNINGS.append(f"settings file {path} is not a JSON object — using defaults")
         return {}
     return data
 

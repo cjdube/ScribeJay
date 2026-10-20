@@ -177,6 +177,19 @@ def test_preferences_are_copied_into_the_settings_file(env_file, stored, tmp_pat
     assert "ignored" not in document
 
 
+def test_a_broken_legacy_preferences_file_is_skipped_not_fatal(
+        env_file, stored, tmp_path, monkeypatch):
+    # The legacy file is only read from. Its parse error must not block the
+    # save of the settings file, which loaded fine.
+    prefs = tmp_path / "preferences.json"
+    prefs.write_text("{bad")
+    monkeypatch.setattr(migrate, "LEGACY_PREFS_PATH", prefs)
+    env_file.write_text("OLLAMA_MODEL=llama9\n")
+    assert _run(monkeypatch) == 0
+    assert _written(tmp_path)["model"]["ollama_model"] == "llama9"
+    assert config.LOAD_ERROR is None
+
+
 def test_no_stale_env_warning_survives_the_migration(env_file, stored, monkeypatch):
     # reload() caches the "both files exist" warning while building the
     # document, and the rename happens after. Leaving it queued would push a

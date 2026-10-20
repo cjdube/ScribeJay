@@ -37,6 +37,8 @@ One JSON document, sections at the top level:
 
 Written atomically at mode `0600`. A corrupt or unreadable file degrades to an
 empty document and logs a warning rather than crashing a scheduled task.
+Nothing writes over a file that did not load: the settings page, `init` and
+`migrate` refuse to save until it is fixed by hand.
 
 Override the location with `SCRIBEJAY_CONFIG_DIR` (the test suite does).
 
