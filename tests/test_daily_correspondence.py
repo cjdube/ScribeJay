@@ -252,6 +252,19 @@ def test_one_failing_half_is_not_remembered(stubbed_run, monkeypatch):
     assert "T" not in co.load_threads()
 
 
+def test_an_incomplete_sent_half_is_not_remembered(stubbed_run, monkeypatch):
+    # A sent message dropped by the cap is a reply the store would never see.
+    from scribejay import correspondence as co
+    monkeypatch.setattr(dc, "fetch_sent_metadata", lambda *a, **k: {
+        "count": 1, "incomplete": "1 message(s) could not be read", "messages": [
+            {"message_id": "m1", "thread_id": "T", "to": "Kat <kat@vendor.example>",
+             "cc": "", "subject": "Re: Catch Up", "date": "2026-08-21 10:00",
+             "is_reply": True}]})
+    assert dc.main() == 0
+    assert len(stubbed_run["persists"]) == 1
+    assert "T" not in co.load_threads()
+
+
 def test_both_halves_failing_writes_nothing(stubbed_run, monkeypatch):
     """A page built from two dead sources reads as a day he spoke to nobody.
     That is a different day, and the record must not claim it.

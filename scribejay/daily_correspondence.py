@@ -85,7 +85,8 @@ def _run_for_day(start, end, day, me, logger) -> None:
     """Build and persist one day's page. Raises on failure — main() owns the run
     boundary and the alert, so a backfill is one run in the dashboard's history
     rather than N half-runs."""
-    sent = _messages("fetch_sent_metadata", fetch_sent_metadata(start, end), day, logger)
+    sent_result = fetch_sent_metadata(start, end)
+    sent = _messages("fetch_sent_metadata", sent_result, day, logger)
     inbox = _messages("fetch_inbox_metadata", fetch_inbox_metadata(start, end), day, logger)
     if sent is None and inbox is None:
         # Both halves of the conversation are missing. A page built from that
@@ -123,6 +124,11 @@ def _run_for_day(start, end, day, me, logger) -> None:
     # would sit in "gone quiet" as his turn for the store's full 90 days.
     if sent is None or inbox is None:
         logger.warning(f"Not remembering {day}'s threads: one Gmail half failed")
+        return
+    # A dropped sent message is a missing reply too. A short inbox only loses
+    # threads, so it is still remembered.
+    if sent_result.get("incomplete"):
+        logger.warning(f"Not remembering {day}'s threads: the sent half is incomplete")
         return
     remember_threads(threads, day)
 
