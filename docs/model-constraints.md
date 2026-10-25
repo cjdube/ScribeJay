@@ -56,8 +56,14 @@ reaches `num_predict` and names this cause — but only if it has a logger. A
 call without `logger=` fails silently by construction.
 
 **On the cloud backends:** only the Ollama path acts on `think`. Gemini's
-equivalent knob is `SCRIBEJAY_GEMINI_THINKING_BUDGET` (already 0 by default,
-and some models reject 0 — see `scribejay/core/backends/gemini.py`). OpenRouter
+equivalent knob is `SCRIBEJAY_GEMINI_THINKING_LEVEL` (`low` by default),
+sent to every model after gemini-2.x. Not `minimal`: `gemini-3.8-flash`
+rejects it with a 400. On a one-word reply `low` spent 0–77 thinking tokens
+there, so it does not turn thinking off; keep the output cap generous. Gemini 2.x takes a token budget instead,
+`SCRIBEJAY_GEMINI_THINKING_BUDGET` (0 by default, and some models reject 0);
+Google's 2026-10 notice says later models answer a budget with 400
+INVALID_ARGUMENT — see `scribejay/core/backends/gemini.py`. ScribeJay never
+sends `temperature`, `top_p` or `top_k`, which the same notice retires. OpenRouter
 translates `think=False` into `reasoning: {enabled: false}`; see
 [llm-backend.md](llm-backend.md).
 

@@ -69,6 +69,7 @@ def test_gemini_disables_thinking_and_sets_output_cap_by_default(monkeypatch):
     # Thinking is a *thinking* model's default, and thinking tokens count
     # against the output cap — leaving it on can starve a draft entirely.
     # Default to budget 0 (off) with generous output headroom.
+    monkeypatch.setenv("SCRIBEJAY_GEMINI_MODEL", "gemini-2.5-flash")
     monkeypatch.delenv("SCRIBEJAY_GEMINI_THINKING_BUDGET", raising=False)
     monkeypatch.delenv("SCRIBEJAY_GEMINI_MAX_OUTPUT_TOKENS", raising=False)
     captured = _patch_gemini(monkeypatch, [_FakeChunk(parts=[_FakePart(text="ok")])])
@@ -81,6 +82,7 @@ def test_gemini_disables_thinking_and_sets_output_cap_by_default(monkeypatch):
 
 
 def test_gemini_thinking_budget_and_cap_are_env_overridable(monkeypatch):
+    monkeypatch.setenv("SCRIBEJAY_GEMINI_MODEL", "gemini-2.5-flash")
     monkeypatch.setenv("SCRIBEJAY_GEMINI_THINKING_BUDGET", "1024")
     monkeypatch.setenv("SCRIBEJAY_GEMINI_MAX_OUTPUT_TOKENS", "2048")
     captured = _patch_gemini(monkeypatch, [_FakeChunk(parts=[_FakePart(text="ok")])])
@@ -90,6 +92,23 @@ def test_gemini_thinking_budget_and_cap_are_env_overridable(monkeypatch):
     config = captured["calls"][0]["config"]
     assert config.thinking_config.thinking_budget == 1024
     assert config.max_output_tokens == 2048
+
+
+def test_gemini_3_gets_a_thinking_level_and_never_a_budget(monkeypatch):
+    # Google's 2026-10 notice: models after 2.x reject thinking_budget with 400.
+    monkeypatch.setenv("SCRIBEJAY_GEMINI_MODEL", "gemini-3.8-flash")
+    monkeypatch.setenv("SCRIBEJAY_GEMINI_THINKING_BUDGET", "128")
+    monkeypatch.delenv("SCRIBEJAY_GEMINI_THINKING_LEVEL", raising=False)
+    captured = _patch_gemini(monkeypatch, [_FakeChunk(parts=[_FakePart(text="ok")])])
+    gemini_backend._gemini_chat([{"role": "user", "content": "hey"}])
+    thinking = captured["calls"][0]["config"].thinking_config
+    assert thinking.thinking_budget is None
+    assert thinking.thinking_level == "LOW"
+
+    monkeypatch.setenv("SCRIBEJAY_GEMINI_THINKING_LEVEL", "medium")
+    captured2 = _patch_gemini(monkeypatch, [_FakeChunk(parts=[_FakePart(text="ok")])])
+    gemini_backend._gemini_chat([{"role": "user", "content": "hey"}])
+    assert captured2["calls"][0]["config"].thinking_config.thinking_level == "MEDIUM"
 
 
 def test_gemini_hoists_the_system_prompt_out_of_contents(monkeypatch):

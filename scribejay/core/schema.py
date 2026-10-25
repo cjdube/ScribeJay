@@ -238,11 +238,24 @@ SETTINGS: tuple[Setting, ...] = (
     Setting(
         key="SCRIBEJAY_GEMINI_THINKING_BUDGET", section="model",
         name="gemini_thinking_budget", type="int",
-        label="Gemini thinking budget (tokens)",
-        help="Thinking shares the output budget, so a large value here can "
-             "empty a template-filling reply. 0 disables thinking; 128 is the "
-             "portable floor for a model that refuses to turn it off.",
+        label="Gemini 2.x thinking budget (tokens)",
+        help="Only sent to gemini-2.x models; later models use the thinking "
+             "level below. Thinking shares the output budget, so a large "
+             "value here can empty a template-filling reply. 0 disables "
+             "thinking; 128 is the portable floor for a model that refuses "
+             "to turn it off.",
         default="0",
+    ),
+    Setting(
+        key="SCRIBEJAY_GEMINI_THINKING_LEVEL", section="model",
+        name="gemini_thinking_level", type="choice",
+        label="Gemini thinking level",
+        help="Sent to every model after gemini-2.x, which reject a token "
+             "budget. Thinking shares the output budget, so keep it low for "
+             "template-filling work. Supported levels vary by model: "
+             "gemini-3.8-flash rejects minimal with a 400.",
+        choices=("minimal", "low", "medium", "high"),
+        default="low",
     ),
     Setting(
         key="GEMINI_API_KEY", section="model", name="gemini_api_key", secret=True,

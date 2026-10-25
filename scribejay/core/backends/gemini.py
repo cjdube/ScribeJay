@@ -75,14 +75,21 @@ def _gemini_chat(
     # Gemini models are *thinking* models, and thinking tokens count against
     # max_output_tokens. See LocalLLMAgent's agent/backends/gemini.py for the
     # measured per-model quirks this budget guards against; the setting should
-    # be pinned the same way here (128 is portable).
-    thinking_budget = int(config.getenv("SCRIBEJAY_GEMINI_THINKING_BUDGET"))
-    _ = think  # not honoured here — see thinking_budget above.
+    # be pinned the same way here (128 is portable). Only 2.x takes a token
+    # budget: Google's 2026-10 notice says later models answer one with 400
+    # INVALID_ARGUMENT, so everything else gets a thinking level.
+    if model.startswith("gemini-2"):
+        thinking = types.ThinkingConfig(
+            thinking_budget=int(config.getenv("SCRIBEJAY_GEMINI_THINKING_BUDGET")))
+    else:
+        thinking = types.ThinkingConfig(
+            thinking_level=config.getenv("SCRIBEJAY_GEMINI_THINKING_LEVEL").upper())
+    _ = think  # not honoured here — see the thinking settings above.
     system, contents = _gemini_contents(messages)
 
     cfg_kwargs = dict(
         max_output_tokens=max_out,
-        thinking_config=types.ThinkingConfig(thinking_budget=thinking_budget),
+        thinking_config=thinking,
     )
     if system:
         cfg_kwargs["system_instruction"] = system
@@ -132,7 +139,7 @@ def _gemini_chat(
                 "gemini generation hit finish_reason=MAX_TOKENS and was cut off "
                 "(output_tokens=%s, thinking_tokens=%s) — the draft is likely "
                 "incomplete; raise SCRIBEJAY_GEMINI_MAX_OUTPUT_TOKENS or lower "
-                "SCRIBEJAY_GEMINI_THINKING_BUDGET",
+                "SCRIBEJAY_GEMINI_THINKING_LEVEL (THINKING_BUDGET on gemini-2.x)",
                 output_tokens, thinking_tokens,
             )
     return message
