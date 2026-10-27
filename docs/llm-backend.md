@@ -99,6 +99,14 @@ against a cold model and is slower than a scheduled local run.
 ## Gemini config
 
 - Key: `GEMINI_API_KEY` or `GOOGLE_API_KEY` (the SDK checks both).
+- `SCRIBEJAY_GEMINI_MODEL` — default `gemini-2.5-flash`.
+- `SCRIBEJAY_GEMINI_MAX_OUTPUT_TOKENS` — ceiling on one reply, default 8192.
+  Thinking tokens count against it.
+- Thinking: a model after gemini-2.x gets `SCRIBEJAY_GEMINI_THINKING_LEVEL`
+  (default `low`); a gemini-2.x model gets `SCRIBEJAY_GEMINI_THINKING_BUDGET`
+  (default 0) instead. Each is ignored where the other applies, so a budget
+  set for a 2.x model does nothing after a switch to 3.x. Measured detail in
+  [model-constraints.md](model-constraints.md).
 - Dependency: `google-genai`, imported lazily so a purely local install never
   loads it.
 
