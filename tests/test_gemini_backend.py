@@ -150,7 +150,7 @@ def test_gemini_attaches_usage_for_the_ledger(monkeypatch):
     message = gemini_backend._gemini_chat([{"role": "user", "content": "hey"}])
 
     assert message["_usage"] == {
-        "model": "gemini-2.5-flash",
+        "model": gemini_backend.GEMINI_DEFAULT_MODEL,
         "prompt_tokens": 5,
         "output_tokens": 3,
         "thinking_tokens": 11,

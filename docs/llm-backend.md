@@ -99,7 +99,7 @@ against a cold model and is slower than a scheduled local run.
 ## Gemini config
 
 - Key: `GEMINI_API_KEY` or `GOOGLE_API_KEY` (the SDK checks both).
-- `SCRIBEJAY_GEMINI_MODEL` — default `gemini-2.5-flash`.
+- `SCRIBEJAY_GEMINI_MODEL` — default `gemini-3.8-flash`. Google limits the 2.x models to accounts that already used them (2026-09-18), so a new key may not reach one.
 - `SCRIBEJAY_GEMINI_MAX_OUTPUT_TOKENS` — ceiling on one reply, default 8192.
   Thinking tokens count against it.
 - Thinking: a model after gemini-2.x gets `SCRIBEJAY_GEMINI_THINKING_LEVEL`

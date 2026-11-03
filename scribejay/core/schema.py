@@ -227,7 +227,7 @@ SETTINGS: tuple[Setting, ...] = (
     Setting(
         key="SCRIBEJAY_GEMINI_MODEL", section="model", name="gemini_model",
         label="Gemini model", help="Used only when the backend is 'gemini'.",
-        default="gemini-2.5-flash",
+        default="gemini-3.8-flash",
     ),
     Setting(
         key="SCRIBEJAY_GEMINI_MAX_OUTPUT_TOKENS", section="model",

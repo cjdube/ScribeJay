@@ -21,7 +21,7 @@ from scribejay.core import config
 from scribejay.core.http import resolve_key
 
 # Default cloud model when the Gemini backend is selected but no model is pinned.
-GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+GEMINI_DEFAULT_MODEL = "gemini-3.8-flash"
 
 
 def _gemini_contents(messages: list[dict]):
