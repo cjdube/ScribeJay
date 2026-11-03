@@ -310,12 +310,14 @@ def gather(day, logger) -> list:
     # query string, and that is where the OAuth codes, booking references and
     # session tokens live; logs/ is plain text and other tools read it.
     if "error" in result:
-        logger.info(f"fetch_chrome_history -> {result['error']}")
-    else:
-        logger.info(f"fetch_chrome_history -> {result.get('range')}: "
-                    f"{result.get('total_meaningful_visits')} visits across "
-                    f"{result.get('sites_shown')} sites: "
-                    + ", ".join(s["domain"] for s in result.get("sites", [])))
+        # History is this task's only source, so an unreadable one is a failed
+        # run, never "no browsing": a brew upgrade that lost Full Disk Access
+        # read as 18 quiet days with no alert (review 2026-11-03).
+        raise RuntimeError(f"fetch_chrome_history failed for {day}: {result['error']}")
+    logger.info(f"fetch_chrome_history -> {result.get('range')}: "
+                f"{result.get('total_meaningful_visits')} visits across "
+                f"{result.get('sites_shown')} sites: "
+                + ", ".join(s["domain"] for s in result.get("sites", [])))
     return result.get("sites", [])
 
 
@@ -397,7 +399,7 @@ def main() -> int:
 
     # A dry run gets its own log file. cli/doctor.py:last_run reads
     # logs/daily_chrome_learnings.log for "Starting"/"run complete" to decide
-    # whether the 5:15 job is healthy, and a sibling repo reads the same
+    # whether the 4:15 job is healthy, and a sibling repo reads the same
     # folder — so a hand-run experiment writing those lines would report a
     # scheduled run that never happened.
     logger = setup_logger("daily_chrome_learnings_dryrun" if dry_run

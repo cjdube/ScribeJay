@@ -87,6 +87,15 @@ def test_fetch_failure_is_a_failed_run(stubbed_run, monkeypatch):
     assert stubbed_run["persists"] == []  # never reached the write
 
 
+def test_an_unreadable_history_is_a_failed_run_not_a_quiet_day(stubbed_run, monkeypatch):
+    calls = []
+    monkeypatch.setattr(dc, "fetch_chrome_history",
+                        lambda *a, **k: {"error": "sqlite error: unable to open database file"})
+    monkeypatch.setattr(dc, "notify_failure", lambda name, detail, logger=None: calls.append(str(detail)))
+    assert dc.main() == 1
+    assert any("unable to open database file" in c for c in calls)
+
+
 # ---- web fetch --------------------------------------------------------------
 
 @pytest.fixture

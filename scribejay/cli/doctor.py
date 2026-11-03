@@ -112,7 +112,7 @@ def install_checks() -> list[Check]:
 # ---- permissions ------------------------------------------------------------
 
 def chrome_history() -> Check:
-    """Read one row out of Chrome's history database, the way the 5:15 job does.
+    """Read one row out of Chrome's history database, the way the 4:15 job does.
 
     Opened `immutable=1` exactly as `sources/chrome.py` opens it, so a lock
     held by a running Chrome cannot make this report a permission problem that

@@ -82,6 +82,9 @@ converts before comparing. See [timezones.md](timezones.md).
 
 **A quiet day writes nothing.** No meaningful browsing, no Likes, or a draft
 that amounts to "None" produces no file. This is normal, not a failure.
+An unreadable Chrome history is not a quiet day: the run fails and pushes
+an alert. After a python@3.12 upgrade that usually means macOS dropped Full
+Disk Access for the new interpreter — `scribejay doctor` names it.
 
 **A failed write emails the draft instead**, and pushes a phone alert — e.g.
 when `LEARNINGS_DIR` points somewhere that doesn't exist. ScribeJay never
