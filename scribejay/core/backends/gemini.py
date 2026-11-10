@@ -23,6 +23,12 @@ from scribejay.core.http import resolve_key
 # Default cloud model when the Gemini backend is selected but no model is pinned.
 GEMINI_DEFAULT_MODEL = "gemini-3.8-flash"
 
+# The SDK's own default is no timeout at all, and on 2026-11-07 a stalled
+# stream held the Chrome job for 4 minutes until Google hung up. Not a setting,
+# for the same reason as OPENROUTER_TIMEOUT_S. The longest good call in the
+# ledger took 41s; httpx applies this per read, so a quiet stream stops too.
+GEMINI_TIMEOUT_S = 120.0
+
 
 def _gemini_contents(messages: list[dict]):
     """Translate canonical system/user messages into (system_instruction,
@@ -95,7 +101,7 @@ def _gemini_chat(
         cfg_kwargs["system_instruction"] = system
     gen_config = types.GenerateContentConfig(**cfg_kwargs)
 
-    client = _gemini_client(timeout=timeout)
+    client = _gemini_client(timeout=GEMINI_TIMEOUT_S if timeout is None else timeout)
     content_parts: list[str] = []
     prompt_tokens = output_tokens = thinking_tokens = None
     finish_reason = None

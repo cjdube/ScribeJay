@@ -65,6 +65,19 @@ def test_gemini_backend_reassembles_text_across_chunks(monkeypatch):
     assert message["content"] == "Hello"
 
 
+def test_gemini_call_always_has_a_timeout(monkeypatch):
+    # No caller passes one, and the SDK's default is to wait forever.
+    seen = []
+    client = _FakeGeminiClient([_FakeChunk(parts=[_FakePart(text="ok")])], {})
+    monkeypatch.setattr(gemini_backend, "_gemini_client",
+                        lambda timeout=None: seen.append(timeout) or client)
+
+    gemini_backend._gemini_chat([{"role": "user", "content": "hey"}])
+    gemini_backend._gemini_chat([{"role": "user", "content": "hey"}], timeout=7)
+
+    assert seen == [gemini_backend.GEMINI_TIMEOUT_S, 7]
+
+
 def test_gemini_disables_thinking_and_sets_output_cap_by_default(monkeypatch):
     # Thinking is a *thinking* model's default, and thinking tokens count
     # against the output cap — leaving it on can starve a draft entirely.

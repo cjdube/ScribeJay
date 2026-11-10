@@ -107,6 +107,8 @@ against a cold model and is slower than a scheduled local run.
   (default 0) instead. Each is ignored where the other applies, so a budget
   set for a 2.x model does nothing after a switch to 3.x. Measured detail in
   [model-constraints.md](model-constraints.md).
+- Timeout: 120s per read, fixed in code (`GEMINI_TIMEOUT_S`), not a setting.
+  The SDK's own default is to wait forever.
 - Dependency: `google-genai`, imported lazily so a purely local install never
   loads it.
 
