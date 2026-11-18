@@ -223,9 +223,11 @@ def summarize_pages(pages: list, logger, backend: str | None) -> list[dict]:
 
     # A parse that yields FEWER results than inputs is the silent failure mode
     # AGENTS.md calls out: the task still succeeds, still writes a file, and
-    # nothing pushes an alert — so the counts have to be in the log.
+    # nothing pushes an alert — so the counts have to be in the log. Only an
+    # empty reply is a fault; a SKIP or an exclusion is the filter working, so
+    # that shortfall is INFO and does not reach Wren's morning rollup.
     if len(out) < len(pages):
-        logger.warning(
+        (logger.warning if empty else logger.info)(
             f"summarized {len(out)} of {len(pages)} fetched pages "
             f"({skipped} off-topic or too thin to describe, "
             f"{empty} returned nothing)")

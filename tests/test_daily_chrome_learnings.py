@@ -195,18 +195,21 @@ class _RecordingLogger:
         self.infos.append(msg % a if a else msg)
 
 
-@pytest.mark.parametrize("reply,expected", [
-    ("SKIP", "1 off-topic or too thin to describe, 0 returned nothing"),
-    ("", "0 off-topic or too thin to describe, 1 returned nothing"),
+@pytest.mark.parametrize("reply,expected,level", [
+    ("SKIP", "1 off-topic or too thin to describe, 0 returned nothing", "infos"),
+    ("", "0 off-topic or too thin to describe, 1 returned nothing", "warnings"),
 ])
-def test_the_warning_says_which_kind_of_nothing_came_back(monkeypatch, reply, expected):
+def test_the_count_says_which_kind_of_nothing_came_back(monkeypatch, reply, expected, level):
     """Both produce no note, but only one is a fault. A single combined count
     reads the same either way, and an operator cannot tell a working summarizer
-    refusing a nav shell from a broken one."""
+    refusing a nav shell from a broken one. Only the fault is a WARNING: a SKIP
+    is the topic gate doing its job, and must not wake the morning rollup."""
     monkeypatch.setattr(dc, "complete_text", lambda **k: reply)
     logger = _RecordingLogger()
     assert dc.summarize_pages([_page()], logger, backend=None) == []
-    assert expected in logger.warnings[0]
+    assert any(expected in m for m in getattr(logger, level))
+    if level == "infos":
+        assert logger.warnings == []
 
 
 def test_fetched_text_matching_an_exclusion_keyword_is_never_summarized(fetchable, monkeypatch):
